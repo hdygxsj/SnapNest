@@ -1,0 +1,20 @@
+# Swift build products and local bundles
+.build/
+.swiftpm/
+dist/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Local environment and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+
+# OS files and local implementation notes
+.DS_Store
+docs/implementation.md
