@@ -199,6 +199,18 @@ struct MainView: View {
     }
     private var settings: some View {
         VStack(alignment: .leading, spacing: 22) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("版本更新").font(.headline)
+                    Text("当前版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0")")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("检查更新…") { model.checkForUpdates?() }
+            }
+            Text("关闭主窗口后，拾图会留在顶部菜单栏。点击菜单栏“拾图”可展开快捷面板。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            Divider()
             Text("启动设置").font(.headline)
             Toggle("登录时自动启动", isOn: Binding(get: { loginItems.isRegistered }, set: { enabled in
                 Task { await loginItems.setEnabled(enabled) }

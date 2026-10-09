@@ -120,5 +120,6 @@ let cropFrame = FloatingEditorLayout.canvas(selection: middleSelection, original
 XCTAssertEqual(cropFrame, CGRect(x: 350, y: 580, width: 300, height: 100))
 await checkLoginItems()
 try await checkGIFExport()
-print("12 test groups, \(failures) failures")
+try checkUpdates()
+print("13 test groups, \(failures) failures")
 exit(failures == 0 ? 0 : 1)

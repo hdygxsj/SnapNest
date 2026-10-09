@@ -185,17 +185,22 @@ final class EditorController {
     private var canvasWindow: NSWindow?
     private var toolbarPanel: NSPanel?
     private var layoutSubscription: AnyCancellable?
+    private var outsideClickMonitor: Any?
+    private var localClickMonitor: Any?
+    private var automaticallyCopy = true
     private var onClose: (() -> Void)?
     private var document: EditorDocument?
     private var originalRegion: CaptureRegion?
     private var originalFrame: CGRect = .zero
     private var visibleScreen: CGRect = .zero
 
-    func show(image: CGImage, region: CaptureRegion?, save: @escaping (CGImage) -> Bool,
+    func show(image: CGImage, region: CaptureRegion?, automaticallyCopy: Bool = true, save: @escaping (CGImage) -> Bool,
               switchMode: @escaping (CaptureMode) -> Void, closed: @escaping () -> Void) {
         dismiss()
         let document = EditorDocument(image: image)
         self.document = document
+        self.automaticallyCopy = automaticallyCopy
+        if automaticallyCopy { copyToClipboard(image) }
         originalRegion = region // Immutable screen capture target; never derive it from toolbar/canvas windows.
         onClose = closed
         let screen = NSScreen.screens.first { screen in
@@ -213,14 +218,13 @@ final class EditorController {
         }
         let finish: () -> Void = { [weak self] in
             guard let self, let rendered = document.render() else { return }
-            // Close panels before restoring the main window.
+            // Close the editor without bringing the app window back.
             self.canvasWindow?.orderOut(nil); self.toolbarPanel?.orderOut(nil)
             if save(rendered) { self.dismiss() } else { self.reveal() }
         }
         let copy: () -> Void = { [weak self] in
             guard let self, let rendered = document.render() else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.writeObjects([NSImage(cgImage: rendered, size: .zero)])
+            self.copyToClipboard(rendered)
             self.cancel()
         }
         let close: () -> Void = { [weak self] in self?.cancel() }
@@ -264,6 +268,7 @@ final class EditorController {
         }
         updateLayout()
         reveal()
+        installOutsideClickMonitors()
     }
     private func updateLayout() {
         guard let document, let canvasWindow else { return }
@@ -280,12 +285,40 @@ final class EditorController {
         canvasWindow?.makeKeyAndOrderFront(nil)
         toolbarPanel?.orderFrontRegardless()
     }
+    private func copyToClipboard(_ image: CGImage) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([NSImage(cgImage: image, size: .zero)])
+    }
+    private func installOutsideClickMonitors() {
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.handleOutsideClick(at: NSEvent.mouseLocation)
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, NSApp.modalWindow == nil else { return event }
+            // Menus and annotation dialogs belong to the editing session, even outside the selection.
+            if let window = event.window,
+               window === self.canvasWindow || window === self.toolbarPanel || window.level >= .popUpMenu {
+                return event
+            }
+            self.handleOutsideClick(at: NSEvent.mouseLocation)
+            return event
+        }
+    }
+    func handleOutsideClick(at point: CGPoint) {
+        guard let canvasWindow, let toolbarPanel, NSApp.modalWindow == nil,
+              !canvasWindow.frame.contains(point), !toolbarPanel.frame.contains(point) else { return }
+        cancel()
+    }
     private func cancel() {
+        if automaticallyCopy, let rendered = document?.render() { copyToClipboard(rendered) }
         let callback = onClose
         dismiss()
         callback?()
     }
     private func dismiss() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        outsideClickMonitor = nil; localClickMonitor = nil
         layoutSubscription = nil
         canvasWindow?.orderOut(nil); toolbarPanel?.orderOut(nil)
         canvasWindow = nil; toolbarPanel = nil; document = nil

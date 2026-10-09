@@ -8,6 +8,9 @@ struct ShituApp {
         if let index = CommandLine.arguments.firstIndex(of: "--render-toolbar"), CommandLine.arguments.count > index + 1 {
             exit(ToolbarVerification.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
         }
+        if CommandLine.arguments.contains("--verify-capture-flow") {
+            exit(CaptureFlowVerification.run() ? 0 : 1)
+        }
         if CommandLine.arguments.contains("--verify-editor") {
             exit(EditorVerification.run() ? 0 : 1)
         }
@@ -25,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
     private let editor = EditorController()
     private let hotKey = HotKey()
+    private let residentWindowDelegate = ResidentWindowDelegate()
+    private let updates = UpdateController()
+    private let quickPanel = NSPopover()
+    private var contextMenu: NSMenu?
+    private var updateSubscription: AnyCancellable?
     private var window: NSWindow!
     private var hud: NSPanel?
     private var statusItem: NSStatusItem!
@@ -32,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1020, height: 810), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "拾图"
+        window.delegate = residentWindowDelegate
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
@@ -41,13 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("ShituMainWindow")
         model.presentEditor = { [weak self] image, kind, region in
             guard let self else { return }
-            self.editor.show(image: image, region: region, save: { [weak self] image in
+            self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
                 self?.model.saveEdited(image, kind: kind) ?? false
             }, switchMode: { [weak self] mode in
                 guard let region else { return }
                 self?.model.switchFromEditor(mode, region: region)
             }, closed: { [weak self] in self?.model.closeEditor() })
         }
+        model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { [weak self] in self?.window.orderOut(nil); NSApp.hide(nil) }
         model.showHUD = { [weak self] in self?.showHUD() }
@@ -56,6 +66,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.shortcutAvailable = hotKey.register()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "拾图")
+        statusItem.button?.toolTip = "拾图：点击展开快捷面板，右键打开菜单"
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(toggleQuickPanel)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        quickPanel.behavior = .transient
+        quickPanel.contentViewController = NSHostingController(rootView: MenuBarPanel(model: model, updates: updates,
+            capture: { [weak self] mode in self?.quickPanel.performClose(nil); self?.model.begin(mode) },
+            open: { [weak self] in self?.quickPanel.performClose(nil); self?.showWindow() },
+            checkUpdates: { [weak self] in self?.quickPanel.performClose(nil); self?.checkUpdates() },
+            quit: { [weak self] in self?.quit() },
+            stop: { [weak self] in self?.quickPanel.performClose(nil); self?.model.stop() }))
+        updateSubscription = updates.$release.sink { [weak self] _ in
+            DispatchQueue.main.async { guard let self else { return }; self.updateMenu(self.model.phase) }
+        }
         subscription = model.$phase.sink { [weak self] phase in
             DispatchQueue.main.async { self?.updateMenu(phase) }
         }
@@ -63,15 +87,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem(); mainMenu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
         appMenu.addItem(withTitle: "关于拾图", action: #selector(about), keyEquivalent: "")
+        let updateItem = appMenu.addItem(withTitle: "检查更新…", action: #selector(checkUpdates), keyEquivalent: "")
+        updateItem.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "退出拾图", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = mainMenu
         showWindow()
+        updates.checkOnLaunch()
         if CommandLine.arguments.contains("--demo-editor") { model.openDemoEditor() }
     }
     private func updateMenu(_ phase: AppModel.Phase) {
         let active = phase == .recording || phase == .scrolling
-        statusItem.button?.title = active ? " ●" : ""
+        statusItem.button?.title = active ? " 拾图 ●" : (updates.asset == nil ? " 拾图" : " 拾图 ↑")
         let menu = NSMenu()
         add("打开拾图", action: #selector(showWindow), to: menu)
         menu.addItem(.separator())
@@ -82,8 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         menu.addItem(.separator())
+        add(updates.asset == nil ? "检查更新…" : "下载新版本…", action: #selector(checkUpdates), to: menu, enabled: !model.busy)
         add("退出拾图", action: #selector(quit), to: menu)
-        statusItem.menu = menu
+        contextMenu = menu
     }
     private func add(_ title: String, action: Selector, to menu: NSMenu, enabled: Bool = true) {
         menu.autoenablesItems = false
@@ -110,8 +138,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hud?.orderFrontRegardless()
     }
+    @objc private func toggleQuickPanel() {
+        guard let button = statusItem.button else { return }
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            quickPanel.performClose(nil)
+            statusItem.menu = contextMenu
+            button.performClick(nil)
+            statusItem.menu = nil
+        } else if quickPanel.isShown { quickPanel.performClose(nil) }
+        else { quickPanel.show(relativeTo: button.bounds, of: button, preferredEdge: .minY) }
+    }
+    @objc private func checkUpdates() {
+        guard !model.busy else { return }
+        updates.checkManually()
+    }
     @objc private func showWindow() {
         if model.phase == .editing { editor.reveal(); return }
+        NSApp.setActivationPolicy(.regular)
         NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
     @objc private func area() { model.begin(.area) }
     @objc private func full() { model.begin(.full) }
@@ -121,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func gif() { model.begin(.gif) }
     @objc private func stop() { model.stop() }
     @objc private func quit() { NSApp.terminate(nil) }
-    @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: "1.0", .credits: NSAttributedString(string: "截图 · 长截图 · 录屏\n所有内容仅保存在本机")]) }
+    @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: updates.currentVersion, .credits: NSAttributedString(string: "截图 · 长截图 · 录屏\n所有内容仅保存在本机")]) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

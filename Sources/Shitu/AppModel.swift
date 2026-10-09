@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     @Published var frameCount = 0
     @Published var pixelHeight = 0
     var presentEditor: ((CGImage, String, CaptureRegion?) -> Void)?
+    var checkForUpdates: (() -> Void)?
     var showMain: (() -> Void)?
     var hideMain: (() -> Void)?
     var showHUD: (() -> Void)?
@@ -133,7 +134,7 @@ final class AppModel: ObservableObject {
             status = "拖动框选区域，Esc 取消"
             selector.select(instruction: mode == .long ? "框选滚动正文，避开固定栏 · 缓慢下滚 · ⌘⇧X 保存" : "拖动选择区域 · Esc 取消") { [weak self] region in
                 guard let self else { return }
-                guard let region else { self.reset(); self.showMain?(); return }
+                guard let region else { self.reset(); self.hideMain?(); return }
                 self.launch(mode, region: region)
             }
         }
@@ -241,7 +242,7 @@ final class AppModel: ObservableObject {
                     try Task.checkCancellation()
                     edit(image, kind: mode.rawValue, region: region)
                 }
-            } catch is CancellationError { reset(); showMain?() }
+            } catch is CancellationError { reset(); hideMain?() }
             catch { fail(error) }
         }
     }
@@ -286,11 +287,11 @@ final class AppModel: ObservableObject {
     func saveEdited(_ image: CGImage, kind: String) -> Bool {
         do {
             try saveImage(image, kind: kind)
-            reset(keepStatus: true); showMain?()
+            reset(keepStatus: true); hideMain?()
             return true
         } catch { self.error = error.localizedDescription; showMain?(); return false }
     }
-    func closeEditor() { reset(); showMain?() }
+    func closeEditor() { reset(); hideMain?() }
     func switchFromEditor(_ mode: CaptureMode, region: CaptureRegion) {
         guard phase == .editing else { return }
         refreshPermission()
