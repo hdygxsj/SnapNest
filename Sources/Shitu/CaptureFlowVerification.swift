@@ -4,6 +4,7 @@ import AppKit
 enum CaptureFlowVerification {
     static func run() -> Bool {
         _ = NSApplication.shared
+        guard WindowSelectionVerification.run() else { print("FAIL window selection gestures"); return false }
         let board = NSPasteboard.general
         let original = (board.pasteboardItems ?? []).map { item in
             item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }

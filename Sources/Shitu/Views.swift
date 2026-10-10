@@ -104,6 +104,7 @@ struct MainView: View {
                     .background(LinearGradient(colors: [mint, Color(red: 0.77, green: 0.95, blue: 0.84)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
             }.buttonStyle(.plain).disabled(model.busy)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                modeCard(.window, icon: "macwindow", subtitle: "悬停锁定窗口，单击截图", badge: "PNG")
                 modeCard(.full, icon: "rectangle.inset.filled", subtitle: "完整记录当前显示器", badge: "PNG")
                 modeCard(.long, icon: "arrow.down.to.line", subtitle: "滚动页面，自动拼接", badge: "长图")
                 modeCard(.record, icon: "record.circle", subtitle: "记录屏幕上的每个瞬间", badge: "MP4")

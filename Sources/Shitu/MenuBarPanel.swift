@@ -33,7 +33,7 @@ struct MenuBarPanel: View {
                 Button("结束捕捉") { stop() }.buttonStyle(.borderedProminent).tint(.mint)
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach([CaptureMode.area, .full, .regionRecord, .gif, .long, .record], id: \.self) { mode in
+                ForEach([CaptureMode.area, .window, .full, .regionRecord, .gif, .long, .record], id: \.self) { mode in
                     Button(mode.rawValue) { capture(mode) }.frame(maxWidth: .infinity)
                         .buttonStyle(.bordered).disabled(model.busy)
                 }

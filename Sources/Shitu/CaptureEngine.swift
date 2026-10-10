@@ -37,6 +37,19 @@ final class CaptureEngine: NSObject, SCRecordingOutputDelegate, SCStreamDelegate
         return (filter, config)
     }
     func screenshot(_ region: CaptureRegion) async throws -> CGImage {
+        if let id = region.windowID {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            guard let window = content.windows.first(where: { $0.windowID == id }) else {
+                throw CaptureFailure(message: "所选窗口已关闭或隐藏，请重新选择。")
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let config = SCStreamConfiguration()
+            config.width = max(2, Int(window.frame.width * region.scale))
+            config.height = max(2, Int(window.frame.height * region.scale))
+            config.ignoreShadowsSingleWindow = true
+            config.showsCursor = false
+            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        }
         let (filter, config) = try await configuration(for: region)
         return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }

@@ -104,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         if active { add(phase == .scrolling ? "结束并编辑  ⌘⇧X" : "结束并保存  ⌘⇧X", action: #selector(stop), to: menu) }
         else {
-            for (title, action) in [("区域截图  ⌘⇧X", #selector(area)), ("全屏截图", #selector(full)), ("滚动长截图", #selector(long)), ("全屏录制", #selector(record)), ("区域录制", #selector(regionRecord)), ("GIF 录制", #selector(gif))] {
+            for (title, action) in [("区域截图  ⌘⇧X", #selector(area)), ("窗口截图", #selector(windowCapture)), ("全屏截图", #selector(full)), ("滚动长截图", #selector(long)), ("全屏录制", #selector(record)), ("区域录制", #selector(regionRecord)), ("GIF 录制", #selector(gif))] {
                 add(title, action: action, to: menu, enabled: phase == .idle)
             }
         }
@@ -157,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
     @objc private func area() { model.begin(.area) }
+    @objc private func windowCapture() { model.begin(.window) }
     @objc private func full() { model.begin(.full) }
     @objc private func long() { model.begin(.long) }
     @objc private func record() { model.begin(.record) }

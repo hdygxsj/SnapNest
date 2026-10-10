@@ -12,7 +12,7 @@ struct CaptureItem: Identifiable, Codable {
 }
 
 enum CaptureMode: String, CaseIterable {
-    case area = "区域截图", full = "全屏截图", long = "滚动长截图", record = "全屏录制", regionRecord = "区域录制", gif = "GIF 录制"
+    case area = "区域截图", window = "窗口截图", full = "全屏截图", long = "滚动长截图", record = "全屏录制", regionRecord = "区域录制", gif = "GIF 录制"
 }
 
 @MainActor
@@ -131,8 +131,8 @@ final class AppModel: ObservableObject {
             launch(mode, region: CaptureRegion(displayID: number.uint32Value, screenFrame: screen.frame, rect: screen.frame, scale: screen.backingScaleFactor))
         } else {
             phase = .selecting
-            status = "拖动框选区域，Esc 取消"
-            selector.select(instruction: mode == .long ? "框选滚动正文，避开固定栏 · 缓慢下滚 · ⌘⇧X 保存" : "拖动选择区域 · Esc 取消") { [weak self] region in
+            status = mode == .window ? "悬停锁定窗口，单击截图，Esc 取消" : "单击窗口或拖动框选，Esc 取消"
+            selector.select(windowOnly: mode == .window, snapWindows: mode == .area, instruction: mode == .long ? "框选滚动正文，避开固定栏 · 缓慢下滚 · ⌘⇧X 保存" : (mode == .area ? "单击窗口截图 · 拖动选择区域 · Esc 取消" : "拖动选择区域 · Esc 取消")) { [weak self] region in
                 guard let self else { return }
                 guard let region else { self.reset(); self.hideMain?(); return }
                 self.launch(mode, region: region)
@@ -301,7 +301,9 @@ final class AppModel: ObservableObject {
             showMain?(); return
         }
         hideMain?()
-        launch(mode, region: region)
+        var screenRegion = region
+        screenRegion.windowID = nil
+        launch(mode, region: screenRegion)
     }
     private func destination(extension suffix: String) throws -> URL {
         try FileManager.default.createDirectory(at: saveFolder, withIntermediateDirectories: true)
