@@ -25,6 +25,10 @@ enum CaptureFlowVerification {
             print("FAIL screenshot must be on clipboard before Save or Copy")
             return false
         }
+        let masks = NSApp.windows.filter { $0.title == "拾图 · 编辑遮罩" && $0.isVisible }
+        guard masks.count == NSScreen.screens.count, !masks.isEmpty else {
+            print("FAIL editor must dim every display outside the selection"); return false
+        }
         guard let canvasWindow = NSApp.windows.first(where: { $0.title == "拾图 · 选区" }) else { return false }
         canvasWindow.contentView?.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -43,6 +47,7 @@ enum CaptureFlowVerification {
         }
         canvas.document.crop(CGRect(x: 10, y: 10, width: 120, height: 90))
         editor.handleOutsideClick(at: CGPoint(x: -100000, y: -100000))
+        guard masks.allSatisfy({ !$0.isVisible }) else { print("FAIL editor masks remain after dismissal"); return false }
         let copied = NSImage(pasteboard: board)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         guard closedCount == 1, copied?.width == 120, copied?.height == 90, !canvasWindow.isVisible else {
             print("FAIL outside click must close and copy the latest edited image"); return false
@@ -56,6 +61,19 @@ enum CaptureFlowVerification {
         editor.handleOutsideClick(at: CGPoint(x: -100000, y: -100000))
         guard board.string(forType: .string) == "keep clipboard" else {
             print("FAIL explicit automatic-copy preference was ignored"); return false
+        }
+        let backdropView = EditorBackdropView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        backdropView.selection = CGRect(x: 20, y: 20, width: 40, height: 40)
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 100,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        backdropView.draw(backdropView.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let outside = bitmap.colorAt(x: 5, y: 5), let inside = bitmap.colorAt(x: 40, y: 40),
+              abs(outside.alphaComponent - 0.36) < 0.02, inside.alphaComponent == 0 else {
+            print("FAIL mask must dim outside pixels and keep selection transparent"); return false
         }
         let model = AppModel()
         var mainShown = false
@@ -96,7 +114,7 @@ enum CaptureFlowVerification {
         guard workspace.isVisible else { print("FAIL workspace cannot reopen"); return false }
         workspace.orderOut(nil)
         print("Resident window checks passed: close hides to menu bar, workspace reopens")
-        print("Capture flow checks passed: immediate clipboard, outside dismissal, latest crop, toolbar/inside clicks, copy preference, no main window on close/save")
+        print("Capture flow checks passed: immediate clipboard, multi-display mask lifecycle/alpha, outside dismissal, latest crop, toolbar/inside clicks, copy preference, no main window on close/save")
         return true
     }
 }

@@ -182,6 +182,7 @@ private final class FloatingCanvasWindow: NSWindow {
 
 @MainActor
 final class EditorController {
+    private let backdrop = EditorBackdrop()
     private var canvasWindow: NSWindow?
     private var toolbarPanel: NSPanel?
     private var layoutSubscription: AnyCancellable?
@@ -219,6 +220,7 @@ final class EditorController {
         let finish: () -> Void = { [weak self] in
             guard let self, let rendered = document.render() else { return }
             // Close the editor without bringing the app window back.
+            self.backdrop.hide()
             self.canvasWindow?.orderOut(nil); self.toolbarPanel?.orderOut(nil)
             if save(rendered) { self.dismiss() } else { self.reveal() }
         }
@@ -278,10 +280,12 @@ final class EditorController {
                 originalPixels: CGSize(width: document.initialWidth, height: document.initialHeight), crop: crop)
             canvasWindow.setFrame(frame, display: true)
         }
+        backdrop.update(selection: canvasWindow.frame)
         toolbarPanel?.setFrame(FloatingEditorLayout.toolbar(selection: canvasWindow.frame, visibleScreen: visibleScreen, size: FloatingEditorToolbar.size), display: true)
     }
     func reveal() {
         NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true)
+        if let canvasWindow { backdrop.show(selection: canvasWindow.frame) }
         canvasWindow?.makeKeyAndOrderFront(nil)
         toolbarPanel?.orderFrontRegardless()
     }
@@ -320,6 +324,7 @@ final class EditorController {
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         outsideClickMonitor = nil; localClickMonitor = nil
         layoutSubscription = nil
+        backdrop.dismiss()
         canvasWindow?.orderOut(nil); toolbarPanel?.orderOut(nil)
         canvasWindow = nil; toolbarPanel = nil; document = nil
         onClose = nil; originalRegion = nil
