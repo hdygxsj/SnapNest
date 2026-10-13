@@ -3,7 +3,7 @@ import SwiftUI
 import ShituCore
 
 enum EditorTool: String, CaseIterable {
-    case rectangle = "矩形", ellipse = "椭圆", arrow = "箭头", pen = "画笔", text = "文字", mosaic = "马赛克", crop = "裁剪"
+    case rectangle = "矩形", ellipse = "椭圆", arrow = "箭头", pen = "画笔", text = "文字", number = "序号", mosaic = "马赛克", crop = "裁剪"
     var icon: String {
         switch self {
         case .rectangle: return "rectangle"
@@ -11,6 +11,7 @@ enum EditorTool: String, CaseIterable {
         case .arrow: return "arrow.up.right"
         case .pen: return "pencil.tip"
         case .text: return "textformat"
+        case .number: return "1.circle"
         case .mosaic: return "square.grid.3x3.fill"
         case .crop: return "crop"
         }
@@ -32,6 +33,7 @@ struct EditorSnapshot {
     var image: CGImage
     var annotations: [Annotation] = []
     var cropOrigin: CGPoint = .zero
+    var nextNumber = 1
 }
 
 @MainActor
@@ -40,6 +42,7 @@ final class EditorDocument: ObservableObject {
     @Published var tool: EditorTool = .rectangle
     @Published var color: Color = .red
     @Published var lineWidth: Double = 4
+    @Published var isRecognizing = false
     @Published var zoom: Double = 1
     @Published var message = "拖动添加标注；文字工具点击输入。⌘Z 撤销，⌘⇧Z 重做。"
     let initialWidth: Int
@@ -53,6 +56,11 @@ final class EditorDocument: ObservableObject {
     var image: CGImage { history.current.image }
     func add(_ annotation: Annotation) {
         var state = history.current
+        var annotation = annotation
+        if annotation.tool == .number {
+            annotation.text = String(state.nextNumber)
+            state.nextNumber += 1
+        }
         state.annotations.append(annotation)
         history.commit(state)
     }
@@ -62,7 +70,7 @@ final class EditorDocument: ObservableObject {
         let clipped = rect.integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
         guard clipped.width >= 8, clipped.height >= 8, let rendered = render(), let cropped = rendered.cropping(to: clipped) else { return }
         let oldOrigin = history.current.cropOrigin
-        history.commit(EditorSnapshot(image: cropped, cropOrigin: CGPoint(x: oldOrigin.x + clipped.minX, y: oldOrigin.y + clipped.minY)))
+        history.commit(EditorSnapshot(image: cropped, cropOrigin: CGPoint(x: oldOrigin.x + clipped.minX, y: oldOrigin.y + clipped.minY), nextNumber: history.current.nextNumber))
         message = "已裁剪到 \(cropped.width) × \(cropped.height)；可撤销。切换录制仍使用原始屏幕选区。"
     }
     func pixelated(_ rect: CGRect) -> CGImage? {
@@ -112,6 +120,14 @@ final class EditorDocument: ObservableObject {
         case .text:
             let font = NSFont.systemFont(ofSize: max(18, annotation.lineWidth * 5), weight: .semibold)
             (annotation.text as NSString).draw(at: first, withAttributes: [.font: font, .foregroundColor: annotation.color])
+        case .number:
+            let font = NSFont.systemFont(ofSize: max(18, annotation.lineWidth * 4), weight: .bold)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+            let text = annotation.text as NSString
+            let textSize = text.size(withAttributes: attributes)
+            let diameter = max(36, max(textSize.width, textSize.height) + 14)
+            context.fillEllipse(in: CGRect(x: first.x - diameter / 2, y: first.y - diameter / 2, width: diameter, height: diameter))
+            text.draw(at: CGPoint(x: first.x - textSize.width / 2, y: first.y - textSize.height / 2), withAttributes: attributes)
         case .mosaic:
             if let patch = annotation.patch {
                 context.interpolationQuality = .none

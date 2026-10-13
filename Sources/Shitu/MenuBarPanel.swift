@@ -29,13 +29,16 @@ struct MenuBarPanel: View {
             }
             Text(model.busy ? model.status : "已在菜单栏运行，随时可以截图")
                 .font(.caption).foregroundStyle(.secondary)
-            if model.phase == .recording || model.phase == .scrolling || model.phase == .capturing {
+            if model.isRecordingSession {
+                Button(model.phase == .paused ? "继续录制" : "暂停录制") { model.toggleRecordingPause() }.disabled(!model.canToggleRecording)
+            }
+            if model.isRecordingSession || model.phase == .scrolling || model.phase == .capturing {
                 Button("结束捕捉") { stop() }.buttonStyle(.borderedProminent).tint(.mint)
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach([CaptureMode.area, .window, .full, .regionRecord, .gif, .long, .record], id: \.self) { mode in
+                ForEach([CaptureMode.area, .repeatArea, .window, .full, .regionRecord, .gif, .long, .record], id: \.self) { mode in
                     Button(mode.rawValue) { capture(mode) }.frame(maxWidth: .infinity)
-                        .buttonStyle(.bordered).disabled(model.busy)
+                        .buttonStyle(.bordered).disabled(model.busy || (mode == .repeatArea && !model.canRepeatCapture))
                 }
             }
             Divider()

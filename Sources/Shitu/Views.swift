@@ -94,7 +94,7 @@ struct MainView: View {
                         .frame(width: 76, height: 76).background(.black.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))
                     VStack(alignment: .leading, spacing: 7) {
                         Text("区域截图").font(.system(size: 23, weight: .semibold))
-                        Text("框选你想保留的部分，一触即得。") .font(.system(size: 12)).opacity(0.65)
+                        Text("拖动框选截图，单击取色，悬停查看像素。") .font(.system(size: 12)).opacity(0.65)
                         HStack(spacing: 5) { key("⌘"); key("⇧"); key("X") }.padding(.top, 5)
                     }
                     Spacer()
@@ -104,6 +104,7 @@ struct MainView: View {
                     .background(LinearGradient(colors: [mint, Color(red: 0.77, green: 0.95, blue: 0.84)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
             }.buttonStyle(.plain).disabled(model.busy)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                modeCard(.repeatArea, icon: "arrow.clockwise", subtitle: "直接截取上次区域，无需框选", badge: "PNG").disabled(!model.canRepeatCapture)
                 modeCard(.window, icon: "macwindow", subtitle: "悬停锁定窗口，单击截图", badge: "PNG")
                 modeCard(.full, icon: "rectangle.inset.filled", subtitle: "完整记录当前显示器", badge: "PNG")
                 modeCard(.long, icon: "arrow.down.to.line", subtitle: "滚动页面，自动拼接", badge: "长图")
@@ -122,7 +123,10 @@ struct MainView: View {
                     ProgressView().controlSize(.small)
                     Text(model.status).font(.system(size: 12))
                     Spacer()
-                    if model.phase == .recording || model.phase == .scrolling {
+                    if model.isRecordingSession {
+                        Button(model.phase == .paused ? "继续录制" : "暂停") { model.toggleRecordingPause() }.disabled(!model.canToggleRecording)
+                    }
+                    if model.isRecordingSession || model.phase == .scrolling {
                         Button(model.phase == .scrolling ? "结束并编辑" : "结束并保存") { model.stop() }.tint(mint)
                     }
                 }.padding(12).background(panel, in: RoundedRectangle(cornerRadius: 10))
@@ -305,12 +309,21 @@ struct CaptureHUD: View {
         HStack(spacing: 12) {
             Circle().fill(model.phase == .recording ? Color.red : mint).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 4) {
-                if let start = model.startedAt {
-                    Text(start, style: .timer).font(.system(size: 16, weight: .medium, design: .monospaced))
+                if model.startedAt != nil {
+                    TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                        let seconds = Int(model.recordedSeconds)
+                        Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).font(.system(size: 16, weight: .medium, design: .monospaced))
+                    }
                 } else { Text(model.phase == .scrolling ? "长截图 · \(model.pixelHeight) px" : "拾图").font(.system(size: 13, weight: .semibold)) }
                 Text(model.status).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer()
+            if model.isRecordingSession {
+                Button { model.toggleRecordingPause() } label: {
+                    Image(systemName: model.phase == .paused ? "play.fill" : "pause.fill").font(.system(size: 13)).padding(11)
+                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+                }.buttonStyle(.plain).disabled(!model.canToggleRecording).help(model.phase == .paused ? "继续录制" : "暂停录制")
+            }
             Button { model.stop() } label: {
                 Image(systemName: "stop.fill").font(.system(size: 13)).padding(11)
                     .background(Color.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 9))

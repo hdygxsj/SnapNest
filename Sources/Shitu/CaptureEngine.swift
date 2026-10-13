@@ -4,11 +4,9 @@ import AVFoundation
 import ShituCore
 
 @MainActor
-final class CaptureEngine: NSObject, SCRecordingOutputDelegate, SCStreamDelegate {
-    private var stream: SCStream?
-    private var output: SCRecordingOutput?
+final class CaptureEngine: NSObject {
+    private var recording: SegmentedRecording?
     var recordingFinished: ((Result<Void, Error>) -> Void)?
-    private var didFinish = false
 
     func verifyPermission() async throws {
         // Preflight can be stale after granting access or replacing an ad-hoc build.
@@ -18,6 +16,9 @@ final class CaptureEngine: NSObject, SCRecordingOutputDelegate, SCStreamDelegate
 
     func configuration(for region: CaptureRegion, audio: Bool = false) async throws -> (SCContentFilter, SCStreamConfiguration) {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard !content.displays.isEmpty else {
+            throw CaptureFailure(message: "未找到可捕获的显示器。请先解锁 Mac，并确认屏幕录制权限后重试。")
+        }
         guard let display = content.displays.first(where: { $0.displayID == region.displayID }) else {
             throw CaptureFailure(message: "所选显示器已断开，请重新选择。")
         }
@@ -28,8 +29,9 @@ final class CaptureEngine: NSObject, SCRecordingOutputDelegate, SCStreamDelegate
         guard config.sourceRect.width >= 2, config.sourceRect.height >= 2 else {
             throw CaptureFailure(message: "选择区域太小，请重新选择。")
         }
-        config.width = max(2, Int(config.sourceRect.width * region.scale) / 2 * 2)
-        config.height = max(2, Int(config.sourceRect.height * region.scale) / 2 * 2)
+        // Still images retain odd pixel dimensions; the recording path aligns its encoder dimensions separately.
+        config.width = max(2, Int((config.sourceRect.width * region.scale).rounded()))
+        config.height = max(2, Int((config.sourceRect.height * region.scale).rounded()))
         config.showsCursor = false
         config.capturesAudio = audio
         config.excludesCurrentProcessAudio = true
@@ -63,38 +65,19 @@ final class CaptureEngine: NSObject, SCRecordingOutputDelegate, SCStreamDelegate
         config.width = max(2, Int(Double(config.width) * ratio) / 2 * 2)
         config.height = max(2, Int(Double(config.height) * ratio) / 2 * 2)
         config.showsCursor = true
-        let recordingConfig = SCRecordingOutputConfiguration()
-        recordingConfig.outputURL = url
-        recordingConfig.outputFileType = .mp4
-        recordingConfig.videoCodecType = .h264
-        let recordingOutput = SCRecordingOutput(configuration: recordingConfig, delegate: self)
-        let captureStream = SCStream(filter: filter, configuration: config, delegate: self)
-        try captureStream.addRecordingOutput(recordingOutput)
-        didFinish = false
-        stream = captureStream
-        output = recordingOutput
-        do { try await captureStream.startCapture() }
-        catch { stream = nil; output = nil; throw error }
+        let session = SegmentedRecording(filter: filter, configuration: config, destination: url)
+        session.finished = { [weak self] result in
+            guard let self else { return }
+            self.recording = nil
+            let callback = self.recordingFinished
+            self.recordingFinished = nil
+            callback?(result)
+        }
+        recording = session
+        do { try await session.start() }
+        catch { recording = nil; recordingFinished = nil; throw error }
     }
-    func stopRecording() async throws { try await stream?.stopCapture() }
-    private func finish(_ result: Result<Void, Error>) {
-        guard !didFinish else { return }
-        didFinish = true
-        let oldStream = stream
-        stream = nil
-        output = nil
-        if case .failure = result { Task { try? await oldStream?.stopCapture() } }
-        recordingFinished?(result)
-        recordingFinished = nil
-    }
-    nonisolated func recordingOutputDidStartRecording(_ recordingOutput: SCRecordingOutput) {}
-    nonisolated func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
-        Task { @MainActor in self.finish(.success(())) }
-    }
-    nonisolated func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {
-        Task { @MainActor in self.finish(.failure(error)) }
-    }
-    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
-        Task { @MainActor in self.finish(.failure(error)) }
-    }
+    func pauseRecording() async throws { try await recording?.pause() }
+    func resumeRecording() async throws { try await recording?.resume() }
+    func stopRecording() async throws { try await recording?.stop() }
 }

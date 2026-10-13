@@ -21,7 +21,7 @@ enum CaptureFlowVerification {
         board.clearContents()
         let editor = EditorController()
         var closedCount = 0
-        editor.show(image: EditorVerification.fixture(), region: nil, save: { _ in true }, switchMode: { _ in }, closed: { closedCount += 1 })
+        editor.show(image: EditorVerification.fixture(), region: nil, save: { _ in true }, switchMode: { _, _ in }, closed: { closedCount += 1 })
         guard NSImage(pasteboard: board) != nil else {
             print("FAIL screenshot must be on clipboard before Save or Copy")
             return false
@@ -58,11 +58,58 @@ enum CaptureFlowVerification {
         board.clearContents()
         board.setString("keep clipboard", forType: .string)
         editor.show(image: EditorVerification.fixture(), region: nil, automaticallyCopy: false,
-                    save: { _ in true }, switchMode: { _ in }, closed: {})
+                    save: { _ in true }, switchMode: { _, _ in }, closed: {})
         editor.handleOutsideClick(at: CGPoint(x: -100000, y: -100000))
         guard board.string(forType: .string) == "keep clipboard" else {
             print("FAIL explicit automatic-copy preference was ignored"); return false
         }
+        // Double-click is an explicit Copy, even when automatic clipboard copy is disabled.
+        editor.show(image: EditorVerification.fixture(), region: nil, automaticallyCopy: false,
+                    save: { _ in true }, switchMode: { _, _ in }, closed: { closedCount += 1 })
+        guard let doubleWindow = NSApp.windows.first(where: { $0.title == "拾图 · 选区" && $0.isVisible }),
+              let doubleRoot = doubleWindow.contentView else { return false }
+        doubleRoot.layoutSubtreeIfNeeded()
+        guard let doubleCanvas = findCanvas(doubleRoot) else { return false }
+        doubleCanvas.document.crop(CGRect(x: 10, y: 10, width: 100, height: 80))
+        doubleCanvas.document.tool = .text
+        let countBeforeDouble = closedCount
+        let doubleEvent = NSEvent.mouseEvent(with: .leftMouseDown, location: CGPoint(x: 20, y: 20),
+            modifierFlags: [], timestamp: 0, windowNumber: doubleWindow.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 2, pressure: 1)!
+        let firstEvent = NSEvent.mouseEvent(with: .leftMouseDown, location: CGPoint(x: 20, y: 20),
+            modifierFlags: [], timestamp: 0, windowNumber: doubleWindow.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 1)!
+        doubleCanvas.mouseDown(with: firstEvent)
+        doubleCanvas.mouseUp(with: firstEvent)
+        doubleCanvas.mouseDown(with: doubleEvent)
+        RunLoop.current.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.05))
+        let doubleImage = NSImage(pasteboard: board)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        guard !doubleWindow.isVisible, closedCount == countBeforeDouble + 1,
+              doubleImage?.width == 100, doubleImage?.height == 80 else {
+            print("FAIL double-click must copy edited screenshot and dismiss"); return false
+        }
+        print("Double-click verified: copies latest crop, closes editor, works with automatic copy disabled")
+        let numberedDocument = EditorDocument(image: EditorVerification.fixture(width: 400, height: 400))
+        numberedDocument.tool = .number
+        let numberedCanvas = CanvasView(document: numberedDocument)
+        numberedCanvas.frame = CGRect(x: 0, y: 0, width: 400, height: 400)
+        var numberCopied = false
+        numberedCanvas.copy = { numberCopied = true }
+        numberedCanvas.mouseDown(with: firstEvent)
+        numberedCanvas.mouseUp(with: firstEvent)
+        guard numberedDocument.history.current.annotations.last?.text == "1" else { print("FAIL number must appear immediately"); return false }
+        numberedCanvas.mouseDown(with: firstEvent)
+        numberedCanvas.mouseUp(with: firstEvent)
+        guard numberedDocument.history.current.annotations.map(\.text) == ["1", "2"] else { print("FAIL rapid number clicks lost"); return false }
+        numberedCanvas.mouseDown(with: doubleEvent)
+        guard numberCopied, numberedDocument.history.current.annotations.map(\.text) == ["1"] else { print("FAIL double-click added an unwanted number"); return false }
+        print("Number gestures verified: immediate marking, rapid clicks, clean double-click copy")
+        numberedDocument.tool = .pen
+        numberedCanvas.mouseDown(with: firstEvent)
+        numberedCanvas.mouseUp(with: firstEvent)
+        guard numberedDocument.history.current.annotations.count == 2 else { return false }
+        numberedCanvas.mouseDown(with: doubleEvent)
+        guard numberedDocument.history.current.annotations.count == 1 else { print("FAIL double-click retained first-click pen dot"); return false }
         let backdropView = EditorBackdropView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
         backdropView.selection = CGRect(x: 20, y: 20, width: 40, height: 40)
         let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 100,
@@ -77,6 +124,20 @@ enum CaptureFlowVerification {
             print("FAIL mask must dim outside pixels and keep selection transparent"); return false
         }
         let model = AppModel()
+        let previousRegion = UserDefaults.standard.data(forKey: "lastCaptureRegion.v1")
+        defer {
+            if let previousRegion { UserDefaults.standard.set(previousRegion, forKey: "lastCaptureRegion.v1") }
+            else { UserDefaults.standard.removeObject(forKey: "lastCaptureRegion.v1") }
+        }
+        if let screen = NSScreen.main, let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            let rect = CGRect(x: screen.frame.minX + 20, y: screen.frame.minY + 30, width: 120, height: 80)
+            model.rememberRegion(CaptureRegion(displayID: number.uint32Value, screenFrame: screen.frame, rect: rect, scale: screen.backingScaleFactor))
+            let relaunched = AppModel()
+            guard relaunched.canRepeatCapture, relaunched.lastCapture?.rect(on: screen.frame) == rect else { print("FAIL last region not restored"); return false }
+            relaunched.phase = .recording
+            guard !relaunched.canRepeatCapture else { print("FAIL repeat enabled while recording"); return false }
+            print("Repeat capture verified: saved display/local region, restored after relaunch, disabled while busy")
+        }
         var mainShown = false
         model.showMain = { mainShown = true }
         model.phase = .editing

@@ -19,6 +19,21 @@ enum EditorVerification {
         return context.makeImage()!
     }
     static func run() -> Bool {
+        guard let numberTool = EditorTool(rawValue: "序号") else { print("FAIL numbered annotation tool missing"); return false }
+        let numbered = EditorDocument(image: fixture(width: 400, height: 400))
+        numbered.add(Annotation(tool: numberTool, points: [CGPoint(x: 80, y: 160)], color: .red, lineWidth: 4))
+        numbered.add(Annotation(tool: numberTool, points: [CGPoint(x: 180, y: 160)], color: .red, lineWidth: 4))
+        guard numbered.history.current.annotations.map(\.text) == ["1", "2"] else { print("FAIL numbering sequence"); return false }
+        numbered.undo()
+        numbered.add(Annotation(tool: numberTool, points: [CGPoint(x: 180, y: 160)], color: .red, lineWidth: 4))
+        guard numbered.history.current.annotations.last?.text == "2" else { return false }
+        numbered.crop(CGRect(x: 0, y: 100, width: 300, height: 200))
+        numbered.add(Annotation(tool: numberTool, points: [CGPoint(x: 200, y: 100)], color: .red, lineWidth: 4))
+        guard numbered.history.current.annotations.last?.text == "3",
+              let renderedNumbers = numbered.render(),
+              let redPixel = ScreenPixels(image: renderedNumbers)?.color(x: 65, y: 60),
+              redPixel.red > 200, redPixel.green < 40 else { print("FAIL number crop or rendering"); return false }
+        print("Number annotations verified: sequence, undo reuse, crop continuity and rendered circle")
         let document = EditorDocument(image: fixture(width: 400, height: 400))
         document.add(Annotation(tool: .rectangle, points: [CGPoint(x: 20, y: 150), CGPoint(x: 170, y: 230)], color: .red, lineWidth: 6))
         document.add(Annotation(tool: .arrow, points: [CGPoint(x: 220, y: 200), CGPoint(x: 300, y: 260)], color: .blue, lineWidth: 4))

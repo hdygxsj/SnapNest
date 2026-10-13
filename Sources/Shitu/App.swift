@@ -5,9 +5,23 @@ import Combine
 @main
 struct ShituApp {
     @MainActor static func main() {
+        if let index = CommandLine.arguments.firstIndex(of: "--render-hud"), CommandLine.arguments.count > index + 1 {
+            exit(ToolbarVerification.renderHUD(to: CommandLine.arguments[index + 1]) ? 0 : 1)
+        }
+        if CommandLine.arguments.contains("--verify-recording") {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            Task { exit(await RecordingVerification.run() ? 0 : 1) }
+            app.run()
+            return
+        }
+        if let index = CommandLine.arguments.firstIndex(of: "--render-color-loupe"), CommandLine.arguments.count > index + 1 {
+            exit(PixelLoupe.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
+        }
         if let index = CommandLine.arguments.firstIndex(of: "--render-toolbar"), CommandLine.arguments.count > index + 1 {
             exit(ToolbarVerification.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
         }
+        if CommandLine.arguments.contains("--verify-productivity") { exit(ProductivityVerification.run() ? 0 : 1) }
         if CommandLine.arguments.contains("--verify-capture-flow") {
             exit(CaptureFlowVerification.run() ? 0 : 1)
         }
@@ -52,11 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
                 self?.model.saveEdited(image, kind: kind) ?? false
-            }, switchMode: { [weak self] mode in
+            }, switchMode: { [weak self] mode, region in
                 guard let region else { return }
                 self?.model.switchFromEditor(mode, region: region)
             }, closed: { [weak self] in self?.model.closeEditor() })
         }
+        editor.regionChanged = { [weak self] in self?.model.rememberRegion($0) }
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { [weak self] in self?.window.orderOut(nil); NSApp.hide(nil) }
@@ -97,16 +112,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--demo-editor") { model.openDemoEditor() }
     }
     private func updateMenu(_ phase: AppModel.Phase) {
-        let active = phase == .recording || phase == .scrolling
-        statusItem.button?.title = active ? " 拾图 ●" : (updates.asset == nil ? " 拾图" : " 拾图 ↑")
+        let active = phase == .recording || phase == .paused || phase == .scrolling
+        statusItem.button?.title = phase == .paused ? " 拾图 Ⅱ" : (active ? " 拾图 ●" : (updates.asset == nil ? " 拾图" : " 拾图 ↑"))
         let menu = NSMenu()
         add("打开拾图", action: #selector(showWindow), to: menu)
         menu.addItem(.separator())
-        if active { add(phase == .scrolling ? "结束并编辑  ⌘⇧X" : "结束并保存  ⌘⇧X", action: #selector(stop), to: menu) }
+        if active {
+            if model.isRecordingSession { add(phase == .paused ? "继续录制" : "暂停录制", action: #selector(toggleRecordingPause), to: menu, enabled: model.canToggleRecording) }
+            add(phase == .scrolling ? "结束并编辑  ⌘⇧X" : "结束并保存  ⌘⇧X", action: #selector(stop), to: menu)
+        }
         else {
             for (title, action) in [("区域截图  ⌘⇧X", #selector(area)), ("窗口截图", #selector(windowCapture)), ("全屏截图", #selector(full)), ("滚动长截图", #selector(long)), ("全屏录制", #selector(record)), ("区域录制", #selector(regionRecord)), ("GIF 录制", #selector(gif))] {
                 add(title, action: action, to: menu, enabled: phase == .idle)
             }
+            add("再次截取上次区域", action: #selector(repeatCapture), to: menu, enabled: model.canRepeatCapture)
         }
         menu.addItem(.separator())
         add(updates.asset == nil ? "检查更新…" : "下载新版本…", action: #selector(checkUpdates), to: menu, enabled: !model.busy)
@@ -157,6 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
     @objc private func area() { model.begin(.area) }
+    @objc private func repeatCapture() { model.begin(.repeatArea) }
     @objc private func windowCapture() { model.begin(.window) }
     @objc private func full() { model.begin(.full) }
     @objc private func long() { model.begin(.long) }
@@ -164,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func regionRecord() { model.begin(.regionRecord) }
     @objc private func gif() { model.begin(.gif) }
     @objc private func stop() { model.stop() }
+    @objc private func toggleRecordingPause() { model.toggleRecordingPause() }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: updates.currentVersion, .credits: NSAttributedString(string: "截图 · 长截图 · 录屏\n所有内容仅保存在本机")]) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

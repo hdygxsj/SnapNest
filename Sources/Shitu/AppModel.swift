@@ -12,12 +12,12 @@ struct CaptureItem: Identifiable, Codable {
 }
 
 enum CaptureMode: String, CaseIterable {
-    case area = "区域截图", window = "窗口截图", full = "全屏截图", long = "滚动长截图", record = "全屏录制", regionRecord = "区域录制", gif = "GIF 录制"
+    case area = "区域截图", repeatArea = "再次截取", window = "窗口截图", full = "全屏截图", long = "滚动长截图", record = "全屏录制", regionRecord = "区域录制", gif = "GIF 录制"
 }
 
 @MainActor
 final class AppModel: ObservableObject {
-    enum Phase { case idle, selecting, capturing, scrolling, recording, stopping, editing }
+    enum Phase { case idle, selecting, capturing, scrolling, recording, paused, stopping, editing }
     @Published var phase: Phase = .idle
     @Published var status = "随时捕捉，留住每一处细节。"
     @Published var error: String?
@@ -37,8 +37,17 @@ final class AppModel: ObservableObject {
     @Published var items: [CaptureItem] = []
     @Published var saveFolder: URL
     @Published var startedAt: Date?
+    @Published private(set) var recordingTransition = false
+    private var recordingClock = RecordingClock()
+    private var recordingIsGIF = false
+    private var stopRequested = false
+    var isRecordingSession: Bool { phase == .recording || phase == .paused }
+    var canToggleRecording: Bool { isRecordingSession && !recordingTransition }
+    var recordedSeconds: TimeInterval { recordingClock.elapsed(at: ProcessInfo.processInfo.systemUptime) }
     @Published var frameCount = 0
     @Published var pixelHeight = 0
+    @Published private(set) var lastCapture: SavedCaptureRegion?
+    var canRepeatCapture: Bool { !busy && lastCapture != nil }
     var presentEditor: ((CGImage, String, CaptureRegion?) -> Void)?
     var checkForUpdates: (() -> Void)?
     var showMain: (() -> Void)?
@@ -55,6 +64,9 @@ final class AppModel: ObservableObject {
     var busy: Bool { phase != .idle }
 
     init() {
+        if let data = UserDefaults.standard.data(forKey: "lastCaptureRegion.v1") {
+            lastCapture = try? JSONDecoder().decode(SavedCaptureRegion.self, from: data)
+        }
         if let path = UserDefaults.standard.string(forKey: "saveFolder") {
             saveFolder = URL(fileURLWithPath: path, isDirectory: true)
         } else {
@@ -109,7 +121,7 @@ final class AppModel: ObservableObject {
         catch { fail(error) }
     }
     func hotKeyPressed() {
-        if phase == .scrolling || phase == .recording { stop() }
+        if phase == .scrolling || isRecordingSession { stop() }
         else if !busy { begin(.area) }
     }
     func begin(_ mode: CaptureMode) {
@@ -124,18 +136,48 @@ final class AppModel: ObservableObject {
         error = nil
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) ?? NSScreen.main
         hideMain?()
-        if mode == .full || mode == .record {
+        if mode == .repeatArea {
+            guard let saved = lastCapture,
+                  let screen = NSScreen.screens.first(where: { Self.displayIdentity($0) == saved.displayIdentity }),
+                  let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                  let rect = saved.rect(on: screen.frame) else {
+                fail(CaptureFailure(message: "上次截图区域不可用，请重新框选。显示器可能已断开，或显示范围发生变化。")); return
+            }
+            launch(.area, region: CaptureRegion(displayID: number.uint32Value, screenFrame: screen.frame, rect: rect, scale: screen.backingScaleFactor))
+        } else if mode == .full || mode == .record {
             guard let screen, let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 fail(CaptureFailure(message: "没有可用的显示器。")); return
             }
             launch(mode, region: CaptureRegion(displayID: number.uint32Value, screenFrame: screen.frame, rect: screen.frame, scale: screen.backingScaleFactor))
         } else {
-            phase = .selecting
-            status = mode == .window ? "悬停锁定窗口，单击截图，Esc 取消" : "单击窗口或拖动框选，Esc 取消"
-            selector.select(windowOnly: mode == .window, snapWindows: mode == .area, instruction: mode == .long ? "框选滚动正文，避开固定栏 · 缓慢下滚 · ⌘⇧X 保存" : (mode == .area ? "单击窗口截图 · 拖动选择区域 · Esc 取消" : "拖动选择区域 · Esc 取消")) { [weak self] region in
-                guard let self else { return }
-                guard let region else { self.reset(); self.hideMain?(); return }
-                self.launch(mode, region: region)
+            phase = .capturing
+            captureTask = Task {
+                do {
+                    var snapshots: [CGDirectDisplayID: CGImage] = [:]
+                    if mode == .area {
+                        status = "正在准备取色…"
+                        try await Task.sleep(for: .milliseconds(200))
+                        for screen in NSScreen.screens {
+                            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { continue }
+                            let region = CaptureRegion(displayID: number.uint32Value, screenFrame: screen.frame,
+                                rect: screen.frame, scale: screen.backingScaleFactor)
+                            snapshots[region.displayID] = try await engine.screenshot(region)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    phase = .selecting
+                    status = mode == .window ? "悬停锁定窗口，单击截图，Esc 取消" : (mode == .area ? "拖动截图 · 单击取色 · Esc 取消" : "拖动框选区域 · Esc 取消")
+                    selector.select(windowOnly: mode == .window, snapshots: snapshots,
+                        colorPicked: { [weak self] hex in
+                            self?.status = "已复制颜色 \(hex)"
+                        }, instruction: mode == .long ? "框选滚动正文，避开固定栏 · 缓慢下滚 · ⌘⇧X 保存" :
+                        (mode == .area ? "单击复制颜色 · 拖动选择区域 · Esc 取消" : "拖动选择区域 · Esc 取消")) { [weak self] region in
+                            guard let self else { return }
+                            guard let region else { self.reset(); self.hideMain?(); return }
+                            self.launch(mode, region: region)
+                        }
+                } catch is CancellationError { reset(); hideMain?() }
+                catch { fail(error) }
             }
         }
     }
@@ -198,13 +240,17 @@ final class AppModel: ObservableObject {
                         return
                     }
                     guard recordingURL != nil, phase == .capturing else { return }
+                    recordingIsGIF = mode == .gif
+                    recordingClock.start(at: ProcessInfo.processInfo.systemUptime)
                     phase = .recording; startedAt = Date()
                     status = mode == .gif ? "GIF · 最长 30 秒 · ⌘⇧X 结束" : "正在录屏 · ⌘⇧X 结束"
                     if mode == .gif {
                         gifStopTask = Task { [weak self] in
-                            do { try await Task.sleep(for: .seconds(GIFExporter.maximumDuration)) }
-                            catch { return }
-                            if self?.phase == .recording { self?.stop() }
+                            while !Task.isCancelled {
+                                do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+                                guard let self, self.isRecordingSession else { return }
+                                if self.recordedSeconds >= GIFExporter.maximumDuration { self.stop(); return }
+                            }
                         }
                     }
                 } else if mode == .long {
@@ -240,6 +286,7 @@ final class AppModel: ObservableObject {
                 } else {
                     let image = try await engine.screenshot(region)
                     try Task.checkCancellation()
+                    rememberRegion(region)
                     edit(image, kind: mode.rawValue, region: region)
                 }
             } catch is CancellationError { reset(); hideMain?() }
@@ -247,9 +294,11 @@ final class AppModel: ObservableObject {
         }
     }
     func stop() {
+        if recordingTransition { stopRequested = true; return }
         if phase == .capturing { captureTask?.cancel(); return }
-        guard phase == .recording || phase == .scrolling else { return }
-        let wasRecording = phase == .recording
+        guard isRecordingSession || phase == .scrolling else { return }
+        let wasRecording = isRecordingSession
+        if wasRecording { recordingClock.pause(at: ProcessInfo.processInfo.systemUptime) }
         phase = .stopping; status = "正在保存，请稍候…"
         if wasRecording {
             Task {
@@ -272,6 +321,25 @@ final class AppModel: ObservableObject {
             }
         }
     }
+    func toggleRecordingPause() {
+        guard canToggleRecording else { return }
+        let pausing = phase == .recording
+        recordingTransition = true
+        if pausing { recordingClock.pause(at: ProcessInfo.processInfo.systemUptime) }
+        status = pausing ? "正在暂停…" : "正在继续录制…"
+        Task {
+            do {
+                if pausing { try await engine.pauseRecording() }
+                else { try await engine.resumeRecording() }
+                guard isRecordingSession else { recordingTransition = false; return }
+                if !pausing { recordingClock.resume(at: ProcessInfo.processInfo.systemUptime) }
+                phase = pausing ? .paused : .recording
+                status = pausing ? "已暂停 · 可继续或结束保存" : (recordingIsGIF ? "GIF · 最长 30 秒 · ⌘⇧X 结束" : "正在录屏 · ⌘⇧X 结束")
+                recordingTransition = false
+                if stopRequested { stopRequested = false; stop() }
+            } catch { recordingTransition = false; stopRequested = false; fail(error) }
+        }
+    }
     func openDemoEditor() {
         guard let screen = NSScreen.main, let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return }
         hideMain?()
@@ -292,6 +360,21 @@ final class AppModel: ObservableObject {
         } catch { self.error = error.localizedDescription; showMain?(); return false }
     }
     func closeEditor() { reset(); hideMain?() }
+    private static func displayIdentity(_ screen: NSScreen) -> String? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+    func rememberRegion(_ region: CaptureRegion) {
+        guard let screen = NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == region.displayID
+        }), let identity = Self.displayIdentity(screen) else { return }
+        let local = region.rect.offsetBy(dx: -region.screenFrame.minX, dy: -region.screenFrame.minY)
+        let saved = SavedCaptureRegion(displayIdentity: identity, localRect: local)
+        guard saved.rect(on: screen.frame) != nil else { return }
+        lastCapture = saved
+        if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data, forKey: "lastCaptureRegion.v1") }
+    }
     func switchFromEditor(_ mode: CaptureMode, region: CaptureRegion) {
         guard phase == .editing else { return }
         refreshPermission()
@@ -345,6 +428,7 @@ final class AppModel: ObservableObject {
     func preview(_ item: CaptureItem) { NSWorkspace.shared.open(item.url) }
     private func reset(keepStatus: Bool = false) {
         phase = .idle; startedAt = nil
+        recordingClock = RecordingClock(); recordingTransition = false; stopRequested = false
         hideHUD?()
         if !keepStatus { status = "随时捕捉，留住每一处细节。" }
     }

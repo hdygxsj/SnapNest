@@ -19,6 +19,8 @@ final class CanvasView: NSView {
     var save: (() -> Void)?
     var copy: (() -> Void)?
     private var draft: Annotation?
+    private var pendingText: DispatchWorkItem?
+    private var firstClickHistory: EditHistory<EditorSnapshot>?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     init(document: EditorDocument) { self.document = document; super.init(frame: .zero) }
@@ -30,22 +32,43 @@ final class CanvasView: NSView {
                        y: min(CGFloat(document.image.height), max(0, location.y * CGFloat(document.image.height) / max(1, bounds.height))))
     }
     override func mouseDown(with event: NSEvent) {
+        pendingText?.cancel()
+        pendingText = nil
+        if event.clickCount == 2 {
+            if let firstClickHistory { document.history = firstClickHistory }
+            firstClickHistory = nil
+            draft = nil
+            needsDisplay = true
+            copy?()
+            return
+        }
+        firstClickHistory = document.history
         window?.makeFirstResponder(self)
         let p = point(event)
         var annotation = Annotation(tool: document.tool, points: [p], color: NSColor(document.color), lineWidth: document.lineWidth)
         if document.tool == .text {
-            let alert = NSAlert()
-            alert.messageText = "添加文字"
-            alert.informativeText = "输入标注文字；字号随工具栏中的粗细调整。"
-            let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 26))
-            input.placeholderString = "在这里输入文字"
-            alert.accessoryView = input
-            alert.addButton(withTitle: "添加"); alert.addButton(withTitle: "取消")
-            alert.window.initialFirstResponder = input
-            if alert.runModal() == .alertFirstButtonReturn, !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                annotation.text = input.stringValue
-                document.add(annotation)
+            // Let a second click copy the screenshot before opening a text dialog.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.window?.isVisible == true, self.document.tool == .text else { return }
+                self.pendingText = nil
+                let alert = NSAlert()
+                alert.messageText = "添加文字"
+                alert.informativeText = "输入标注文字；字号随工具栏中的粗细调整。"
+                let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 26))
+                input.placeholderString = "在这里输入文字"
+                alert.accessoryView = input
+                alert.addButton(withTitle: "添加"); alert.addButton(withTitle: "取消")
+                alert.window.initialFirstResponder = input
+                if alert.runModal() == .alertFirstButtonReturn, !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    annotation.text = input.stringValue
+                    self.document.add(annotation)
+                }
             }
+            pendingText = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
+        } else if document.tool == .number {
+            document.add(annotation)
+            needsDisplay = true
         } else { draft = annotation; needsDisplay = true }
     }
     override func mouseDragged(with event: NSEvent) {
@@ -68,7 +91,9 @@ final class CanvasView: NSView {
         needsDisplay = true
     }
     override func keyDown(with event: NSEvent) {
+        firstClickHistory = nil
         if event.keyCode == 53 {
+            pendingText?.cancel(); pendingText = nil
             if draft != nil { draft = nil; needsDisplay = true } else { cancel?() }
             return
         }
@@ -98,6 +123,9 @@ struct FloatingEditorToolbar: View {
     var copy: () -> Void
     var switchMode: (CaptureMode) -> Void
     var close: () -> Void
+    var pin: () -> Void = {}
+    var recognize: () -> Void = {}
+    var adjust: () -> Void = {}
     static let size = CGSize(width: 520, height: 88)
     private let colors: [(String, Color)] = [("红色", .red), ("橙色", .orange), ("黄色", .yellow), ("绿色", .green), ("蓝色", .blue), ("白色", .white), ("黑色", .black)]
     var body: some View {
@@ -151,6 +179,9 @@ struct FloatingEditorToolbar: View {
                     iconButton("plus.magnifyingglass", help: "放大") { document.zoom = min(3, document.zoom * 1.25) }
                 }
                 Spacer(minLength: 0)
+                iconButton("pin", help: "钉在屏幕上", action: pin)
+                iconButton("text.viewfinder", help: document.isRecognizing ? "正在识别文字…" : "识别文字", action: recognize).disabled(document.isRecognizing)
+                if canSwitch { iconButton("arrow.up.left.and.arrow.down.right", help: "调整选区", action: adjust) }
                 iconButton("xmark", help: "取消 Esc", action: close).keyboardShortcut(.cancelAction)
                 actionButton("复制", icon: "doc.on.doc", width: 62, action: copy).keyboardShortcut("c", modifiers: .command)
                 actionButton("保存", icon: "checkmark", width: 62, prominent: true, action: save).keyboardShortcut("s", modifiers: .command)
@@ -182,7 +213,10 @@ private final class FloatingCanvasWindow: NSWindow {
 
 @MainActor
 final class EditorController {
+    var regionChanged: ((CaptureRegion) -> Void)?
     private let backdrop = EditorBackdrop()
+    private let adjustmentSelector = SelectionController()
+    private var adjustmentActive = false
     private var canvasWindow: NSWindow?
     private var toolbarPanel: NSPanel?
     private var layoutSubscription: AnyCancellable?
@@ -196,7 +230,7 @@ final class EditorController {
     private var visibleScreen: CGRect = .zero
 
     func show(image: CGImage, region: CaptureRegion?, automaticallyCopy: Bool = true, save: @escaping (CGImage) -> Bool,
-              switchMode: @escaping (CaptureMode) -> Void, closed: @escaping () -> Void) {
+              switchMode: @escaping (CaptureMode, CaptureRegion?) -> Void, closed: @escaping () -> Void) {
         dismiss()
         let document = EditorDocument(image: image)
         self.document = document
@@ -258,9 +292,17 @@ final class EditorController {
         toolbar.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let toolbarHost = NSHostingView(rootView: FloatingEditorToolbar(document: document, canSwitch: region != nil,
             save: finish, copy: copy, switchMode: { [weak self] mode in
-                self?.dismiss() // Remove the frozen screenshot before starting a live capture of the original region.
-                switchMode(mode)
-            }, close: close))
+                let target = self?.originalRegion
+                self?.dismiss()
+                switchMode(mode, target)
+            }, close: close, pin: { [weak self] in
+                guard let self, let image = document.render() else { return }
+                let frame = self.canvasWindow?.frame ?? .zero
+                self.cancel()
+                PinnedImages.shared.show(image, near: frame)
+            }, recognize: { [weak self] in self?.recognizeText() }, adjust: { [weak self] in
+                self?.adjustSelection(save: save, switchMode: switchMode, closed: closed)
+            }))
         toolbarHost.sizingOptions = []
         toolbarHost.frame = CGRect(origin: .zero, size: FloatingEditorToolbar.size)
         toolbar.contentView = toolbarHost
@@ -289,6 +331,58 @@ final class EditorController {
         canvasWindow?.makeKeyAndOrderFront(nil)
         toolbarPanel?.orderFrontRegardless()
     }
+    private func recognizeText() {
+        guard let document, !document.isRecognizing, let image = document.render() else { return }
+        document.isRecognizing = true
+        Task { [weak self] in
+            do {
+                let text = try await Task.detached(priority: .userInitiated) { try TextRecognition.recognize(image) }.value
+                guard let self, self.document === document else { return }
+                document.isRecognizing = false
+                if TextRecognition.present(text) {
+                    let callback = self.onClose
+                    self.dismiss()
+                    callback?()
+                }
+            } catch {
+                guard let self, self.document === document else { return }
+                document.isRecognizing = false
+                let alert = NSAlert(); alert.messageText = "文字识别失败"
+                alert.informativeText = error.localizedDescription; alert.runModal()
+            }
+        }
+    }
+    private func adjustSelection(save: @escaping (CGImage) -> Bool,
+        switchMode: @escaping (CaptureMode, CaptureRegion?) -> Void, closed: @escaping () -> Void) {
+        guard let region = originalRegion, !adjustmentActive else { return }
+        if let document, document.history.canUndo {
+            let alert = NSAlert(); alert.messageText = "重新调整截图区域？"
+            alert.informativeText = "确认后会重新截图，替换当前标注和裁剪；取消调整可返回当前截图。"
+            alert.addButton(withTitle: "调整选区"); alert.addButton(withTitle: "返回")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        adjustmentActive = true
+        backdrop.hide(); canvasWindow?.orderOut(nil); toolbarPanel?.orderOut(nil)
+        adjustmentSelector.select(initialRegion: region) { [weak self] target in
+            guard let self else { return }
+            guard let target else { self.adjustmentActive = false; self.reveal(); return }
+            Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .milliseconds(200))
+                    let image = try await CaptureEngine().screenshot(target)
+                    guard let self else { return }
+                    self.adjustmentActive = false
+                    self.regionChanged?(target)
+                    self.show(image: image, region: target, automaticallyCopy: self.automaticallyCopy,
+                              save: save, switchMode: switchMode, closed: closed)
+                } catch {
+                    guard let self else { return }
+                    self.adjustmentActive = false; self.reveal()
+                    let alert = NSAlert(); alert.messageText = "无法重新截图"; alert.informativeText = error.localizedDescription; alert.runModal()
+                }
+            }
+        }
+    }
     private func copyToClipboard(_ image: CGImage) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([NSImage(cgImage: image, size: .zero)])
@@ -309,7 +403,7 @@ final class EditorController {
         }
     }
     func handleOutsideClick(at point: CGPoint) {
-        guard let canvasWindow, let toolbarPanel, NSApp.modalWindow == nil,
+        guard !adjustmentActive, let canvasWindow, let toolbarPanel, NSApp.modalWindow == nil,
               !canvasWindow.frame.contains(point), !toolbarPanel.frame.contains(point) else { return }
         cancel()
     }
