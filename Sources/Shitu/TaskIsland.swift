@@ -3,11 +3,13 @@ import AppKit
 import SwiftUI
 import Combine
 
-enum IslandPage { case launcher, tasks }
+enum IslandPage { case launcher, tasks, capture, settings }
 
 @MainActor final class TaskIslandController: ObservableObject {
     @Published var expanded = false
     @Published var page: IslandPage = .launcher
+    let captureContent: AnyView?
+    let settingsContent: AnyView?
     private let model: TaskCenterModel
     private let launcher: QuickLauncherController
     private let panel = IslandPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -16,8 +18,9 @@ enum IslandPage { case launcher, tasks }
     private var screenObserver: NSObjectProtocol?
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
-    init(model: TaskCenterModel, launcher: QuickLauncherController, preview: Bool = false) {
+    init(model: TaskCenterModel, launcher: QuickLauncherController, captureContent: AnyView? = nil, settingsContent: AnyView? = nil, preview: Bool = false) {
         self.model = model; self.launcher = launcher
+        self.captureContent = captureContent; self.settingsContent = settingsContent
         if preview { return }
         panel.level = .floating; panel.isOpaque = false; panel.backgroundColor = .clear
         panel.hasShadow = true; panel.hidesOnDeactivate = false
@@ -83,39 +86,44 @@ struct UnifiedIslandView: View {
     @ObservedObject var controller: TaskIslandController
     @ObservedObject var model: TaskCenterModel
     @ObservedObject var launcher: QuickLauncherController
-    private let mint = Color(red: 0.62, green: 0.92, blue: 0.77)
+    @Environment(\.colorScheme) private var colorScheme
+    private var mint: Color { colorScheme == .dark ? Color(red: 0.62, green: 0.92, blue: 0.77) : Color(red: 0.08, green: 0.42, blue: 0.31) }
     var body: some View {
         Group {
             if controller.expanded {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
                         Image(systemName: "viewfinder").foregroundStyle(mint).padding(.trailing, 8)
+                        tab("截图", page: .capture, icon: "viewfinder")
                         tab("快捷启动", page: .launcher, icon: "command")
                         tab("待办", page: .tasks, icon: "checklist")
+                        tab("设置", page: .settings, icon: "slider.horizontal.3")
                         Spacer()
                         Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(8) }.help("收起 · Esc")
                     }.padding(.horizontal, 16).frame(height: 66).fixedSize(horizontal: false, vertical: true)
-                    Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+                    Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
                     if controller.page == .launcher { QuickLauncherView(model: launcher).frame(maxWidth: .infinity, maxHeight: .infinity) }
-                    else { TaskCenterView(model: model).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else if controller.page == .tasks { TaskCenterView(model: model).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else if controller.page == .capture { controller.captureContent ?? AnyView(Text("截图工具")) }
+                    else { controller.settingsContent ?? AnyView(Text("跟随系统外观")) }
                 }
             } else {
                 Button { controller.expand(.tasks) } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "command").foregroundStyle(mint)
-                        Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 14)
-                        Text(model.connected && model.dataAvailable ? "\(model.unfinishedCount) 项待办" : "快捷启动 · 待办")
+                        Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 1, height: 14)
+                        Image(systemName: "checklist").foregroundStyle(mint)
+                        Text(model.connected && model.dataAvailable ? "\(model.unfinishedCount)" : "—")
                             .font(.system(size: 12, weight: .medium))
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
-        .buttonStyle(.plain).tint(mint).foregroundStyle(.white.opacity(0.92))
+        .buttonStyle(.plain).tint(mint).foregroundStyle(Color.primary)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.055, green: 0.07, blue: 0.09))
+        .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: controller.expanded ? 22 : 19))
-        .overlay(RoundedRectangle(cornerRadius: controller.expanded ? 22 : 19).stroke(.white.opacity(0.12), lineWidth: 1))
-        .preferredColorScheme(.dark)
+        .overlay(RoundedRectangle(cornerRadius: controller.expanded ? 22 : 19).stroke(Color.primary.opacity(0.12), lineWidth: 1))
     }
     private func tab(_ title: String, page: IslandPage, icon: String) -> some View {
         Button { controller.expand(page) } label: {
@@ -131,7 +139,7 @@ struct TaskIslandView: View {
     @ObservedObject var model: TaskCenterModel
     let open: () -> Void
     var body: some View {
-        Button(action: open) { Label("\(model.unfinishedCount) 项待办", systemImage: "checklist").padding(10) }
-            .buttonStyle(.plain).foregroundStyle(.white).background(Color(red: 0.055, green: 0.07, blue: 0.09), in: Capsule())
+        Button(action: open) { Label(model.connected && model.dataAvailable ? "\(model.unfinishedCount)" : "—", systemImage: "checklist").padding(10) }
+            .buttonStyle(.plain).foregroundStyle(Color.primary).background(Color(nsColor: .windowBackgroundColor), in: Capsule())
     }
 }

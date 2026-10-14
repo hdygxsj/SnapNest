@@ -17,7 +17,6 @@ final class SelectedTextCapture: ObservableObject {
     private var activation: NSObjectProtocol?
     private var pending: Task<Void, Never>?
     private var bubble: NSPanel?
-    private var settings: NSWindow?
     private var generation = 0
 
     func start() {
@@ -123,26 +122,13 @@ final class SelectedTextCapture: ObservableObject {
         panel.orderFrontRegardless()
     }
 
-    func showPreferences() {
-        hasAccess = AXIsProcessTrusted()
-        if settings == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "划词添加待办"
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SelectedTextSettings(capture: self))
-            window.center(); settings = window
-        }
-        NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true)
-        settings?.makeKeyAndOrderFront(nil)
-    }
-
     func openAccessibilitySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
     func refreshAccess() { hasAccess = AXIsProcessTrusted() }
 }
 
-private struct SelectedTextSettings: View {
+struct SelectedTextSettings: View {
     @ObservedObject var capture: SelectedTextCapture
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -156,6 +142,6 @@ private struct SelectedTextSettings: View {
                 Button("打开辅助功能设置") { capture.openAccessibilitySettings() }
                 Button("重新检查") { capture.refreshAccess() }
             }
-        }.padding(24).frame(width: 430, height: 300)
+        }
     }
 }

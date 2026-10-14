@@ -59,26 +59,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let taskCenter = TaskCenterController()
     private let selectedText = SelectedTextCapture()
     private var launcherShortcutAvailable = false
-    private let residentWindowDelegate = ResidentWindowDelegate()
     private let updates = UpdateController()
-    private let quickPanel = NSPopover()
     private var contextMenu: NSMenu?
     private var updateSubscription: AnyCancellable?
-    private var window: NSWindow!
     private var hud: NSPanel?
     private var statusItem: NSStatusItem!
     private var subscription: AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1020, height: 810), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "拾图"
-        window.delegate = residentWindowDelegate
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: MainView(model: model).padding(.top, 22).background(Color(red: 0.055, green: 0.07, blue: 0.09)))
-        window.minSize = NSSize(width: 900, height: 720)
-        window.center()
-        window.setFrameAutosaveName("ShituMainWindow")
         model.presentEditor = { [weak self] image, kind, region in
             guard let self else { return }
             self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
@@ -95,33 +82,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectedText.canCapture = { [weak self] in self?.model.busy == false }
         selectedText.addTask = { [weak self] text in self?.taskCenter.showComposer(text: text) }
         selectedText.start()
+        taskCenter.captureContent = AnyView(CaptureWorkspace(model: model))
+        taskCenter.settingsContent = AnyView(WorkspaceSettings(model: model, selectedText: selectedText))
         taskCenter.start()
         launcherKey.action = { [weak self] in self?.showLauncher() }
         launcherShortcutAvailable = launcherKey.register(keyCode: UInt32(kVK_Space), identifier: 2)
+        launcher.shortcutAvailable = launcherShortcutAvailable
         taskKey.action = { [weak self] in self?.selectedText.capture() }
         if !taskKey.register(keyCode: UInt32(kVK_ANSI_T), identifier: 3) {
             selectedText.shortcutMessage = "⌘⇧T 被其他应用占用。可开启划词按钮，或从菜单栏添加待办。"
         }
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
-        model.hideMain = { [weak self] in self?.window.orderOut(nil); NSApp.hide(nil) }
+        model.hideMain = { NSApp.hide(nil) }
         model.showHUD = { [weak self] in self?.showHUD() }
         model.hideHUD = { [weak self] in self?.hud?.orderOut(nil) }
         hotKey.action = { [weak self] in self?.model.hotKeyPressed() }
         model.shortcutAvailable = hotKey.register()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "拾图")
-        statusItem.button?.toolTip = "拾图：点击展开快捷面板，右键打开菜单"
+        statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "SnapNest")
+        statusItem.button?.toolTip = "SnapNest：点击展开快捷面板，右键打开菜单"
         statusItem.button?.target = self
         statusItem.button?.action = #selector(toggleQuickPanel)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        quickPanel.behavior = .transient
-        quickPanel.contentViewController = NSHostingController(rootView: MenuBarPanel(model: model, updates: updates,
-            capture: { [weak self] mode in self?.quickPanel.performClose(nil); self?.model.begin(mode) },
-            open: { [weak self] in self?.quickPanel.performClose(nil); self?.showWindow() },
-            checkUpdates: { [weak self] in self?.quickPanel.performClose(nil); self?.checkUpdates() },
-            quit: { [weak self] in self?.quit() },
-            stop: { [weak self] in self?.quickPanel.performClose(nil); self?.model.stop() }))
         updateSubscription = updates.$release.sink { [weak self] _ in
             DispatchQueue.main.async { guard let self else { return }; self.updateMenu(self.model.phase) }
         }
@@ -136,11 +119,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem(); mainMenu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "关于拾图", action: #selector(about), keyEquivalent: "")
+        appMenu.addItem(withTitle: "关于SnapNest", action: #selector(about), keyEquivalent: "")
         let updateItem = appMenu.addItem(withTitle: "检查更新…", action: #selector(checkUpdates), keyEquivalent: "")
         updateItem.target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出拾图", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "退出SnapNest", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = mainMenu
         showWindow()
         updates.checkOnLaunch()
@@ -148,9 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func updateMenu(_ phase: AppModel.Phase) {
         let active = phase == .recording || phase == .paused || phase == .scrolling
-        statusItem.button?.title = phase == .paused ? " 拾图 Ⅱ" : (active ? " 拾图 ●" : (updates.asset == nil ? " 拾图" : " 拾图 ↑"))
+        statusItem.button?.title = phase == .paused ? " SnapNest Ⅱ" : (active ? " SnapNest ●" : (updates.asset == nil ? " SnapNest" : " SnapNest ↑"))
         let menu = NSMenu()
-        add("打开拾图", action: #selector(showWindow), to: menu)
+        add("打开SnapNest", action: #selector(showWindow), to: menu)
         add(launcherShortcutAvailable ? "快捷启动  ⌘⇧空格" : "快捷启动（快捷键被占用）", action: #selector(showLauncher), to: menu, enabled: !model.busy)
         add("待办与灵动岛", action: #selector(showTasks), to: menu, enabled: !model.busy)
         add("新增待办…", action: #selector(newTask), to: menu, enabled: !model.busy)
@@ -168,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         add(updates.asset == nil ? "检查更新…" : "下载新版本…", action: #selector(checkUpdates), to: menu, enabled: !model.busy)
-        add("退出拾图", action: #selector(quit), to: menu)
+        add("退出SnapNest", action: #selector(quit), to: menu)
         contextMenu = menu
     }
     private func add(_ title: String, action: Selector, to menu: NSMenu, enabled: Bool = true) {
@@ -199,37 +182,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleQuickPanel() {
         guard let button = statusItem.button else { return }
         if NSApp.currentEvent?.type == .rightMouseUp {
-            quickPanel.performClose(nil)
             statusItem.menu = contextMenu
             button.performClick(nil)
             statusItem.menu = nil
-        } else if quickPanel.isShown { quickPanel.performClose(nil) }
-        else { quickPanel.show(relativeTo: button.bounds, of: button, preferredEdge: .minY) }
+        } else { showWindow() }
     }
     @objc private func showLauncher() {
         guard !model.busy else { return }
-        quickPanel.performClose(nil); launcher.show()
+        launcher.show()
     }
     @objc private func showTasks() {
         guard !model.busy else { return }
-        quickPanel.performClose(nil); taskCenter.showTasks()
+        taskCenter.showTasks()
     }
     @objc private func newTask() {
         guard !model.busy else { return }
-        quickPanel.performClose(nil); taskCenter.showComposer(text: "")
+        taskCenter.showComposer(text: "")
     }
     @objc private func selectionPreferences() {
         guard !model.busy else { return }
-        quickPanel.performClose(nil); selectedText.showPreferences()
+        taskCenter.showPage(.settings)
     }
     @objc private func checkUpdates() {
         guard !model.busy else { return }
-        updates.checkManually()
+        taskCenter.showPage(.settings)
     }
     @objc private func showWindow() {
         if model.phase == .editing { editor.reveal(); return }
         NSApp.setActivationPolicy(.regular)
-        NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
+        taskCenter.showPage(.capture) }
     @objc private func area() { model.begin(.area) }
     @objc private func repeatCapture() { model.begin(.repeatArea) }
     @objc private func windowCapture() { model.begin(.window) }
@@ -241,7 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func stop() { model.stop() }
     @objc private func toggleRecordingPause() { model.toggleRecordingPause() }
     @objc private func quit() { NSApp.terminate(nil) }
-    @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: updates.currentVersion, .credits: NSAttributedString(string: "截图 · 录屏 · 快捷启动 · 待办\n截图保存在本机；提醒事项由系统账号同步。\n2.0 私有版本")]) }
+    @objc private func about() { taskCenter.showPage(.settings) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

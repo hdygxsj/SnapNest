@@ -22,7 +22,7 @@ final class EditorBackdrop {
         if windows.isEmpty {
             for screen in NSScreen.screens {
                 let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-                panel.title = "拾图 · 编辑遮罩"
+                panel.title = "SnapNest · 编辑遮罩"
                 panel.isReleasedWhenClosed = false
                 panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
                 panel.isOpaque = false

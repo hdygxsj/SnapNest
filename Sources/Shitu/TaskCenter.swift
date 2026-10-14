@@ -186,6 +186,8 @@ enum TaskStoreError: LocalizedError {
 @MainActor final class TaskCenterController {
     let model: TaskCenterModel
     private var island: TaskIslandController?
+    var captureContent: AnyView?
+    var settingsContent: AnyView?
     private var observers: [NSObjectProtocol] = []
     private var subscriptions: Set<AnyCancellable> = []
     init(repository: TaskRepository? = nil, defaults: UserDefaults = .standard) {
@@ -193,7 +195,7 @@ enum TaskStoreError: LocalizedError {
     }
     func start() {
         guard island == nil else { return }
-        island = TaskIslandController(model: model, launcher: QuickLauncherController.shared)
+        island = TaskIslandController(model: model, launcher: QuickLauncherController.shared, captureContent: captureContent, settingsContent: settingsContent)
         for name in [Notification.Name.EKEventStoreChanged, NSApplication.didBecomeActiveNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.model.refresh() }
@@ -212,6 +214,7 @@ enum TaskStoreError: LocalizedError {
         island?.expand(.tasks)
         Task { await model.refresh() }
     }
+    func showPage(_ page: IslandPage) { if island == nil { start() }; island?.expand(page) }
     func setCaptureActive(_ active: Bool) { island?.setCaptureActive(active) }
 
 }
@@ -260,7 +263,7 @@ struct TaskCenterView: View {
                             if let due = item.due { Text(due, style: .date).font(.caption).foregroundStyle(.secondary) }
                         }
                         Spacer(); Button("编辑") { model.draft = item }
-                    }.padding(.vertical, 3).listRowBackground(Color.white.opacity(0.035))
+                    }.padding(.vertical, 3).listRowBackground(Color.primary.opacity(0.04))
                 }.scrollContentBackground(.hidden)
             } else {
                 Text("选择专用 SnapNest 列表，或在指定账户创建新列表。")
@@ -349,11 +352,20 @@ private struct TaskDraftView: View {
         let unifiedTasks = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-tasks", directory: directory, size: NSSize(width: 600, height: 570))
         controller.page = .launcher
         let unifiedLauncher = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-launcher", directory: directory, size: NSSize(width: 600, height: 570))
-        return onboarding && tasks && composer && island && unifiedTasks && unifiedLauncher
+        var themes = true
+        for dark in [false, true] {
+            let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
+            controller.expanded = true; controller.page = .tasks
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "workspace-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 600, height: 570), appearance: appearance) && themes
+            controller.expanded = false
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "count-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 192, height: 38), appearance: appearance) && themes
+        }
+        return onboarding && tasks && composer && island && unifiedTasks && unifiedLauncher && themes
     }
-    private static func renderView<V: View>(_ root: V, name: String, directory: String, size: NSSize) -> Bool {
+    private static func renderView<V: View>(_ root: V, name: String, directory: String, size: NSSize, appearance: NSAppearance? = nil) -> Bool {
         let view = NSHostingView(rootView: root.frame(width: size.width, height: size.height).background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = appearance
         window.contentView = view; view.frame = NSRect(origin: .zero, size: size)
         view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.12))

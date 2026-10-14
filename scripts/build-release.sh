@@ -7,7 +7,7 @@ if [ "$(/usr/libexec/PlistBuddy -c 'Print SnapNestPrivateEdition' Resources/Info
 else
     RELEASE_DIR="$PWD/dist/releases/v$VERSION"
 fi
-APP="$RELEASE_DIR/拾图.app"
+APP="$RELEASE_DIR/SnapNest.app"
 if [ -e "$APP" ]; then
     printf '%s\n' 'Release bundle already exists; use a new version or move the previous bundle before rebuilding.' >&2
     exit 2

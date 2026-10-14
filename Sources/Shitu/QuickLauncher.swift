@@ -19,6 +19,7 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
     @Published fileprivate var selectedID: String?
     @Published fileprivate var error: String?
     @Published fileprivate var scanning = false
+    @Published var shortcutAvailable = false
     @Published fileprivate var addingURL = false
     @Published fileprivate var focusGeneration = 0
     private weak var panel: NSPanel?
@@ -179,6 +180,12 @@ struct QuickLauncherView: View {
     @ObservedObject var model: QuickLauncherController
     @FocusState private var searchFocused: Bool
     var body: some View {
+        Group {
+            if model.addingURL { LauncherURLSheet(model: model) }
+            else { launcherContent }
+        }
+    }
+    private var launcherContent: some View {
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -229,7 +236,6 @@ struct QuickLauncherView: View {
             .onAppear { searchFocused = true }
             .onChange(of: model.focusGeneration) { _, _ in searchFocused = true }
             .onChange(of: model.query) { _, _ in model.resetSelection() }
-            .sheet(isPresented: $model.addingURL) { LauncherURLSheet(model: model) }
     }
 }
 
