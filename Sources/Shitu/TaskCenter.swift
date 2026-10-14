@@ -98,7 +98,7 @@ enum TaskStoreError: LocalizedError {
     @Published var error: String?
     @Published var connected = false
     @Published var busy = false
-    @Published var islandEnabled: Bool { didSet { defaults.set(islandEnabled, forKey: "tasks.islandEnabled") } }
+    @Published var islandEnabled: Bool { didSet { defaults.set(islandEnabled, forKey: "tasks.islandPinned.v2") } }
     @Published var draft: TaskEntry?
     @Published var pendingDraft: TaskEntry?
     private let repository: TaskRepository
@@ -109,7 +109,7 @@ enum TaskStoreError: LocalizedError {
     init(repository: TaskRepository, defaults: UserDefaults = .standard) {
         self.repository = repository; self.defaults = defaults
         listID = defaults.string(forKey: "tasks.listID")
-        islandEnabled = defaults.object(forKey: "tasks.islandEnabled") as? Bool ?? true
+        islandEnabled = defaults.object(forKey: "tasks.islandPinned.v2") as? Bool ?? false
     }
     func connect() async {
         guard !busy else { return }; busy = true; defer { busy = false }
@@ -278,7 +278,7 @@ struct TaskCenterView: View {
                 if model.sources.isEmpty { Text("没有可用账户。请先在系统提醒事项中配置账户，再刷新。") }
             }
             Spacer(minLength: 0)
-            Toggle("显示屏幕顶部任务计数", isOn: $model.islandEnabled)
+            Toggle("常驻顶部显示待办数量", isOn: $model.islandEnabled)
         }.padding(22).frame(minWidth: 420, minHeight: 400)
             .disabled(model.busy)
 

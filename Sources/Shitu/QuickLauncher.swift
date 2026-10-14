@@ -20,6 +20,9 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
     @Published fileprivate var error: String?
     @Published fileprivate var scanning = false
     @Published var shortcutAvailable = false
+    @Published fileprivate var editingShortcut: LauncherItem?
+    let appShortcuts = AppShortcutStore()
+    var canLaunchApplication: (() -> Bool)?
     @Published fileprivate var addingURL = false
     @Published fileprivate var focusGeneration = 0
     private weak var panel: NSPanel?
@@ -40,9 +43,19 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
         }
     }
 
+    func startApplicationShortcuts() {
+        appShortcuts.launch = { [weak self] binding in
+            guard let self, self.canLaunchApplication?() != false else { return }
+            let item = LauncherItem(url: binding.url, title: binding.title)
+            self.open(item, fromShortcut: true)
+        }
+        appShortcuts.start()
+    }
+
     fileprivate var results: [LauncherItem] {
-        let favoriteIDs = Set(favorites.map(\.id))
-        return (favorites + applications.filter { !favoriteIDs.contains($0.id) })
+        let bound = appShortcuts.bindings.map { LauncherItem(url: $0.url, title: $0.title) }
+        var seen = Set<String>()
+        return (favorites + bound + applications).filter { seen.insert($0.id).inserted }
             .filter { LauncherSearch.matches(title: $0.title, query: query) }
     }
 
@@ -70,7 +83,7 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
     private func installKeys() {
         removeKeys()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.panel, self.panel?.attachedSheet == nil, !self.addingURL else { return event }
+            guard let self, event.window === self.panel, self.panel?.attachedSheet == nil, !self.addingURL, self.editingShortcut == nil else { return event }
             // Candidate navigation, commit and cancellation belong to the input method.
             if let editor = self.panel?.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
             switch event.keyCode {
@@ -102,18 +115,18 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
         open(item)
     }
 
-    fileprivate func open(_ item: LauncherItem) {
+    fileprivate func open(_ item: LauncherItem, fromShortcut: Bool = false) {
         launchGeneration += 1
         let generation = launchGeneration
         error = nil
         if item.url.isFileURL && !FileManager.default.fileExists(atPath: item.url.path) {
-            error = "目标已移动或删除：\(item.title)"; return
+            error = "目标已移动或删除：\(item.title)"; if fromShortcut { show() }; return
         }
         if item.url.pathExtension.lowercased() == "app" && item.url.isFileURL {
             NSWorkspace.shared.openApplication(at: item.url, configuration: .init()) { [weak self] _, failure in
                 Task { @MainActor in
                     guard let self, self.launchGeneration == generation else { return }
-                    if let failure { self.error = "无法打开：\(failure.localizedDescription)" }
+                    if let failure { self.error = "无法打开：\(failure.localizedDescription)"; if fromShortcut { self.show() } }
                     else { self.hide() }
                 }
             }
@@ -178,10 +191,15 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
 
 struct QuickLauncherView: View {
     @ObservedObject var model: QuickLauncherController
+    @ObservedObject private var shortcuts: AppShortcutStore
+    init(model: QuickLauncherController) { self.model = model; self.shortcuts = model.appShortcuts }
     @FocusState private var searchFocused: Bool
     var body: some View {
         Group {
-            if model.addingURL { LauncherURLSheet(model: model) }
+            if let item = model.editingShortcut {
+                AppShortcutEditor(store: shortcuts, url: item.url, title: item.title) { model.editingShortcut = nil; searchFocused = true }
+            }
+            else if model.addingURL { LauncherURLSheet(model: model) }
             else { launcherContent }
         }
     }
@@ -212,6 +230,12 @@ struct QuickLauncherView: View {
                                     Text(item.isWeb ? item.url.absoluteString : item.url.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
                                 Spacer()
+                                if item.url.isFileURL && item.url.pathExtension.lowercased() == "app" {
+                                    Button { model.editingShortcut = item } label: {
+                                        Text(shortcuts.bindings.first(where: { $0.id == item.id })?.chord.label ?? "设置快捷键").font(.caption.monospaced())
+                                    }.buttonStyle(.bordered).help(shortcuts.failures[item.id] ?? "设置此应用的全局启动快捷键")
+                                    if shortcuts.failures[item.id] != nil { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+                                }
                                 Button { model.toggleFavorite(item) } label: {
                                     Image(systemName: model.favorites.contains(where: { $0.id == item.id }) ? "star.fill" : "star")
                                 }.buttonStyle(.borderless).help("添加或移除收藏")
@@ -226,6 +250,7 @@ struct QuickLauncherView: View {
                     }
                 }.onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
             }
+            if let error = shortcuts.error { Text(error).font(.caption).foregroundStyle(.red) }
             if let error = model.error { Text(error).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading) }
             HStack {
                 Text("↑ ↓ 选择    ↩ 打开    Esc 关闭").font(.caption).foregroundStyle(.secondary)

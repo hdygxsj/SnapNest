@@ -36,10 +36,15 @@ enum TaskCenterVerification {
         let suite = "SnapNest.TaskVerification.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "tasks.islandEnabled") // Legacy default must not force a persistent island.
         let model = TaskCenterModel(repository: repo, defaults: defaults)
         func check(_ value: Bool, _ label: String) -> Bool {
             if !value { print("FAIL Tasks: \(label)") }; return value
         }
+        guard check(!model.islandEnabled, "island hidden by default, including legacy preference") else { return false }
+        model.islandEnabled = true
+        guard check(TaskCenterModel(repository: repo, defaults: defaults).islandEnabled, "explicit pin persists") else { return false }
+        model.islandEnabled = false
         await model.refresh()
         guard check(repo.requests == 0 && model.items.isEmpty, "refresh cannot request access or bind arbitrary list") else { return false }
         model.requestComposer(text: "Selected text")

@@ -92,6 +92,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !taskKey.register(keyCode: UInt32(kVK_ANSI_T), identifier: 3) {
             selectedText.shortcutMessage = "⌘⇧T 被其他应用占用。可开启划词按钮，或从菜单栏添加待办。"
         }
+        launcher.canLaunchApplication = { [weak self] in self?.model.busy == false }
+        launcher.startApplicationShortcuts()
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { NSApp.hide(nil) }
