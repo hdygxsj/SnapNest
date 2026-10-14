@@ -73,7 +73,7 @@ enum IslandPage { case launcher, tasks, capture, settings }
     private func update() {
         guard !suppressed, expanded || model.islandEnabled, let screen = NSScreen.screens.first else { panel.orderOut(nil); return }
         let frame = screen.visibleFrame
-        let size = expanded ? NSSize(width: 600, height: 570) : NSSize(width: 192, height: 38)
+        let size = expanded ? NSSize(width: 800, height: 600) : NSSize(width: 192, height: 38)
         panel.setFrame(NSRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 8, width: size.width, height: size.height), display: true)
         panel.orderFrontRegardless()
     }
@@ -86,51 +86,72 @@ struct UnifiedIslandView: View {
     @ObservedObject var controller: TaskIslandController
     @ObservedObject var model: TaskCenterModel
     @ObservedObject var launcher: QuickLauncherController
-    @Environment(\.colorScheme) private var colorScheme
-    private var mint: Color { colorScheme == .dark ? Color(red: 0.62, green: 0.92, blue: 0.77) : Color(red: 0.08, green: 0.42, blue: 0.31) }
+    @Environment(\.colorScheme) private var scheme
+    private var dark: Bool { scheme == .dark }
+    private var accent: Color { WorkspaceTheme.accent(scheme) }
     var body: some View {
         Group {
             if controller.expanded {
                 VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "viewfinder").foregroundStyle(mint).padding(.trailing, 8)
-                        tab("截图", page: .capture, icon: "viewfinder")
-                        tab("快捷启动", page: .launcher, icon: "command")
-                        tab("待办", page: .tasks, icon: "checklist")
-                        tab("设置", page: .settings, icon: "slider.horizontal.3")
+                    VStack(spacing: 0) {
+                        navigation
+                        content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    HStack(spacing: 8) {
+                        Text("轻屿").font(.system(size: 11, weight: .semibold))
+                        Text("·").foregroundStyle(.tertiary)
+                        Text(controller.page == .launcher ? "搜索应用 · 设置独立快捷键" : "随手捕捉，轻松有序").foregroundStyle(.secondary)
                         Spacer()
-                        Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(8) }.help("收起 · Esc")
-                    }.padding(.horizontal, 16).frame(height: 66).fixedSize(horizontal: false, vertical: true)
-                    Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-                    if controller.page == .launcher { QuickLauncherView(model: launcher).frame(maxWidth: .infinity, maxHeight: .infinity) }
-                    else if controller.page == .tasks { TaskCenterView(model: model).frame(maxWidth: .infinity, maxHeight: .infinity) }
-                    else if controller.page == .capture { controller.captureContent ?? AnyView(Text("截图工具")) }
-                    else { controller.settingsContent ?? AnyView(Text("跟随系统外观")) }
+                        Keycap(text: "esc"); Text("收起").foregroundStyle(.secondary)
+                    }.font(.system(size: 11)).padding(.horizontal, 22).frame(height: 42)
+                        .overlay(alignment: .top) { Divider().opacity(0.5) }
                 }
             } else {
                 Button { controller.expand(.tasks) } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "command").foregroundStyle(mint)
-                        Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 1, height: 14)
-                        Image(systemName: "checklist").foregroundStyle(mint)
-                        Text(model.connected && model.dataAvailable ? "\(model.unfinishedCount)" : "—")
-                            .font(.system(size: 12, weight: .medium))
+                        Image(systemName: "checklist").foregroundStyle(accent)
+                        Text(model.connected && model.dataAvailable ? "\(model.unfinishedCount)" : "—").font(.system(size: 12, weight: .semibold))
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+        }.buttonStyle(.plain).tint(accent).foregroundStyle(Color.primary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WorkspaceTheme.surface(scheme))
+            .clipShape(RoundedRectangle(cornerRadius: controller.expanded ? 18 : 19))
+            .overlay(RoundedRectangle(cornerRadius: controller.expanded ? 18 : 19).stroke(Color.primary.opacity(0.09), lineWidth: 1))
+    }
+    private var navigation: some View {
+        HStack(spacing: 8) {
+            Button { controller.collapse() } label: {
+                Image(systemName: "leaf.fill").font(.system(size: 19, weight: .medium)).foregroundStyle(accent)
+                    .frame(width: 42, height: 36)
+            }.help("轻屿 · 收起")
+            tab("截图", page: .capture, icon: "viewfinder")
+            tab("启动", page: .launcher, icon: "square.grid.2x2")
+            tab("待办", page: .tasks, icon: "checkmark.square")
+            tab("设置", page: .settings, icon: "gearshape")
+            Spacer(minLength: 0)
+            Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(12) }.help("收起 · Esc")
+        }.padding(14).frame(height: 66)
+            .background(dark ? Color.white.opacity(0.025) : Color.white.opacity(0.35))
+            .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+    }
+    @ViewBuilder private var content: some View {
+        switch controller.page {
+        case .launcher: QuickLauncherView(model: launcher)
+        case .tasks: TaskCenterView(model: model)
+        case .capture: controller.captureContent ?? AnyView(Text("截图工具"))
+        case .settings: controller.settingsContent ?? AnyView(Text("外观设置"))
         }
-        .buttonStyle(.plain).tint(mint).foregroundStyle(Color.primary)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: controller.expanded ? 22 : 19))
-        .overlay(RoundedRectangle(cornerRadius: controller.expanded ? 22 : 19).stroke(Color.primary.opacity(0.12), lineWidth: 1))
     }
     private func tab(_ title: String, page: IslandPage, icon: String) -> some View {
         Button { controller.expand(page) } label: {
-            Label(title, systemImage: icon).font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 14).frame(height: 34)
-                .foregroundStyle(controller.page == page ? mint : Color.secondary)
-                .background(controller.page == page ? mint.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            HStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 17, weight: .medium))
+                Text(title).font(.system(size: 13, weight: controller.page == page ? .semibold : .medium))
+            }.frame(width: 88, height: 38)
+                .foregroundStyle(controller.page == page ? (dark ? Color.white : accent) : Color.secondary)
+                .background(controller.page == page ? accent.opacity(dark ? 0.34 : 0.09) : .clear, in: RoundedRectangle(cornerRadius: 11))
         }
     }
 }

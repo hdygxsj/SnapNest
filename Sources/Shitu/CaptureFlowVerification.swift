@@ -26,11 +26,11 @@ enum CaptureFlowVerification {
             print("FAIL screenshot must be on clipboard before Save or Copy")
             return false
         }
-        let masks = NSApp.windows.filter { $0.title == "SnapNest · 编辑遮罩" && $0.isVisible }
+        let masks = NSApp.windows.filter { $0.title == "轻屿 · 编辑遮罩" && $0.isVisible }
         guard masks.count == NSScreen.screens.count, !masks.isEmpty else {
             print("FAIL editor must dim every display outside the selection"); return false
         }
-        guard let canvasWindow = NSApp.windows.first(where: { $0.title == "SnapNest · 选区" }) else { return false }
+        guard let canvasWindow = NSApp.windows.first(where: { $0.title == "轻屿 · 选区" }) else { return false }
         canvasWindow.contentView?.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         func findCanvas(_ view: NSView) -> CanvasView? {
@@ -42,7 +42,7 @@ enum CaptureFlowVerification {
         }
         editor.handleOutsideClick(at: CGPoint(x: canvasWindow.frame.midX, y: canvasWindow.frame.midY))
         guard closedCount == 0 else { print("FAIL inside click dismissed editor"); return false }
-        if let toolbar = NSApp.windows.first(where: { $0.title == "SnapNest · 选区工具条" }) {
+        if let toolbar = NSApp.windows.first(where: { $0.title == "轻屿 · 选区工具条" }) {
             editor.handleOutsideClick(at: CGPoint(x: toolbar.frame.midX, y: toolbar.frame.midY))
             guard closedCount == 0 else { print("FAIL toolbar click dismissed editor"); return false }
         }
@@ -66,7 +66,7 @@ enum CaptureFlowVerification {
         // Double-click is an explicit Copy, even when automatic clipboard copy is disabled.
         editor.show(image: EditorVerification.fixture(), region: nil, automaticallyCopy: false,
                     save: { _ in true }, switchMode: { _, _ in }, closed: { closedCount += 1 })
-        guard let doubleWindow = NSApp.windows.first(where: { $0.title == "SnapNest · 选区" && $0.isVisible }),
+        guard let doubleWindow = NSApp.windows.first(where: { $0.title == "轻屿 · 选区" && $0.isVisible }),
               let doubleRoot = doubleWindow.contentView else { return false }
         doubleRoot.layoutSubtreeIfNeeded()
         guard let doubleCanvas = findCanvas(doubleRoot) else { return false }
@@ -147,7 +147,7 @@ enum CaptureFlowVerification {
             return false
         }
         let savedHistory = UserDefaults.standard.data(forKey: "history")
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("SnapNest-Flow-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("轻屿-Flow-\(UUID().uuidString)")
         defer {
             if let savedHistory { UserDefaults.standard.set(savedHistory, forKey: "history") }
             else { UserDefaults.standard.removeObject(forKey: "history") }

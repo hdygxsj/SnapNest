@@ -31,7 +31,7 @@ final class AppModel: ObservableObject {
     @Published var checkingPermission = false
     var permission: Bool { access.isAllowed }
     var permissionNeedsRecovery: Bool { access.needsRecovery }
-    let permissionInstructions = "macOS 尚未允许当前版本捕获屏幕。请在“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”中，关闭再开启SnapNest，然后完全退出并重新打开。若仍失败，移除列表中的旧SnapNest，再添加当前应用。"
+    let permissionInstructions = "macOS 尚未允许当前版本捕获屏幕。请在“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”中，关闭再开启轻屿，然后完全退出并重新打开。若仍失败，移除列表中的旧轻屿，再添加当前应用。"
     var applicationPath: String { Bundle.main.bundleURL.path }
     @Published var shortcutAvailable = false
     @Published var items: [CaptureItem] = []
@@ -394,7 +394,7 @@ final class AppModel: ObservableObject {
     private func destination(extension suffix: String) throws -> URL {
         try FileManager.default.createDirectory(at: saveFolder, withIntermediateDirectories: true)
         let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        return saveFolder.appendingPathComponent("SnapNest_\(formatter.string(from: Date()))_\(UUID().uuidString.prefix(4)).\(suffix)")
+        return saveFolder.appendingPathComponent("轻屿_\(formatter.string(from: Date()))_\(UUID().uuidString.prefix(4)).\(suffix)")
     }
     private func saveImage(_ image: CGImage, kind: String) throws {
         let bitmap = NSBitmapImageRep(cgImage: image)

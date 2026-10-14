@@ -23,7 +23,7 @@ struct MenuBarPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Image(systemName: "viewfinder").foregroundStyle(.mint)
-                Text("SnapNest").font(.headline)
+                Text("轻屿").font(.headline)
                 Spacer()
                 Text("⌘⇧X").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
             }
@@ -55,7 +55,7 @@ struct MenuBarPanel: View {
             HStack {
                 Text("关闭主窗口不会退出").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Button("退出SnapNest", action: quit).disabled(model.busy)
+                Button("退出轻屿", action: quit).disabled(model.busy)
             }
         }.padding(18).frame(width: 330)
     }

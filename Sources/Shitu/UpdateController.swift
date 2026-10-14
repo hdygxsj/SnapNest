@@ -21,7 +21,7 @@ final class UpdateController: ObservableObject {
     func show() {
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "SnapNest · 版本更新"
+            window.title = "轻屿 · 版本更新"
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: UpdateView(updates: self))
             window.center()
@@ -88,7 +88,7 @@ final class UpdateController: ObservableObject {
             let destination = folder.appendingPathComponent(asset.name)
             try FileManager.default.moveItem(at: temporary, to: destination)
             downloadedURL = destination
-            status = "下载完成。解压后退出SnapNest，将新版拖入“应用程序”替换旧版，再重新打开。"
+            status = "下载完成。解压后退出轻屿，将新版拖入“应用程序”替换旧版，再重新打开。"
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } catch { status = "下载失败：\(error.localizedDescription)" }
     }
@@ -98,7 +98,7 @@ struct UpdateView: View {
     @ObservedObject var updates: UpdateController
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("SnapNest").font(.title2.bold())
+            Text("轻屿").font(.title2.bold())
             Text("当前版本 \(updates.currentVersion)").foregroundStyle(.secondary)
             if !UpdateController.isPrivateEdition { Toggle("启动时自动检查更新", isOn: $updates.automaticallyCheck) }
             Text(updates.status).font(.callout).textSelection(.enabled)

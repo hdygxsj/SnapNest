@@ -193,6 +193,7 @@ struct QuickLauncherView: View {
     @ObservedObject var model: QuickLauncherController
     @ObservedObject private var shortcuts: AppShortcutStore
     init(model: QuickLauncherController) { self.model = model; self.shortcuts = model.appShortcuts }
+    @Environment(\.colorScheme) private var scheme
     @FocusState private var searchFocused: Bool
     var body: some View {
         Group {
@@ -223,11 +224,13 @@ struct QuickLauncherView: View {
                     LazyVStack(spacing: 3) {
                         ForEach(model.results) { item in
                             HStack(spacing: 10) {
-                                Image(systemName: item.isWeb ? "globe" : (item.url.pathExtension.lowercased() == "app" ? "app" : "folder"))
-                                    .frame(width: 26).foregroundStyle(.secondary)
+                                Group {
+                                    if item.url.isFileURL { Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path)).resizable().scaledToFit() }
+                                    else { Image(systemName: "globe").resizable().scaledToFit().padding(5).foregroundStyle(WorkspaceTheme.accent(scheme)) }
+                                }.frame(width: 34, height: 34)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title).lineLimit(1)
-                                    Text(item.isWeb ? item.url.absoluteString : item.url.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(item.isWeb ? (item.url.host ?? item.title) : (item.url.pathExtension.lowercased() == "app" ? "应用程序" : "文件夹")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
                                 Spacer()
                                 if item.url.isFileURL && item.url.pathExtension.lowercased() == "app" {
@@ -239,8 +242,8 @@ struct QuickLauncherView: View {
                                 Button { model.toggleFavorite(item) } label: {
                                     Image(systemName: model.favorites.contains(where: { $0.id == item.id }) ? "star.fill" : "star")
                                 }.buttonStyle(.borderless).help("添加或移除收藏")
-                            }.padding(9)
-                                .background(model.selectedID == item.id ? Color.accentColor.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                            }.padding(10)
+                                .background(model.selectedID == item.id ? WorkspaceTheme.accent(scheme).opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
                                 .contentShape(Rectangle())
                                 .onTapGesture(count: 2) { model.open(item) }
                                 .onTapGesture { model.selectedID = item.id }
@@ -257,7 +260,7 @@ struct QuickLauncherView: View {
                 Spacer()
                 Button("打开", action: model.openSelection).disabled(model.results.isEmpty)
             }
-        }.padding(18).padding(.top, 20).frame(width: 560, height: 470)
+        }.padding(26).frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { searchFocused = true }
             .onChange(of: model.focusGeneration) { _, _ in searchFocused = true }
             .onChange(of: model.query) { _, _ in model.resetSelection() }

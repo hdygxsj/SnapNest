@@ -7,7 +7,7 @@ if [ "$(/usr/libexec/PlistBuddy -c 'Print SnapNestPrivateEdition' Resources/Info
 else
     RELEASE_DIR="$PWD/dist/releases/v$VERSION"
 fi
-APP="$RELEASE_DIR/SnapNest.app"
+APP="$RELEASE_DIR/轻屿.app"
 if [ -e "$APP" ]; then
     printf '%s\n' 'Release bundle already exists; use a new version or move the previous bundle before rebuilding.' >&2
     exit 2
@@ -24,6 +24,6 @@ iconutil -c icns .build/ReleaseIcon.iconset -o "$APP/Contents/Resources/AppIcon.
 codesign --force --sign "${SHITU_SIGNING_IDENTITY:--}" --identifier com.shitu.capture "$APP"
 codesign --verify --deep --strict "$APP"
 lipo "$APP/Contents/MacOS/Shitu" -verify_arch arm64 x86_64
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$RELEASE_DIR/SnapNest-v$VERSION-macos-universal.zip"
-(cd "$RELEASE_DIR" && shasum -a 256 "SnapNest-v$VERSION-macos-universal.zip" > SHA256SUMS.txt)
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$RELEASE_DIR/轻屿-v$VERSION-macos-universal.zip"
+(cd "$RELEASE_DIR" && shasum -a 256 "轻屿-v$VERSION-macos-universal.zip" > SHA256SUMS.txt)
 printf 'Built release: %s\n' "$RELEASE_DIR"

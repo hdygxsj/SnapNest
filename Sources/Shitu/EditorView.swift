@@ -265,7 +265,7 @@ final class EditorController {
         }
         let close: () -> Void = { [weak self] in self?.cancel() }
         let canvas = FloatingCanvasWindow(contentRect: originalFrame, styleMask: [.borderless], backing: .buffered, defer: false)
-        canvas.title = "SnapNest · 选区"
+        canvas.title = "轻屿 · 选区"
         canvas.isReleasedWhenClosed = false
         canvas.level = .floating
         canvas.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -282,7 +282,7 @@ final class EditorController {
         }
         canvasWindow = canvas
         let toolbar = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        toolbar.title = "SnapNest · 选区工具条"
+        toolbar.title = "轻屿 · 选区工具条"
         toolbar.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         toolbar.hidesOnDeactivate = false
         toolbar.isFloatingPanel = true

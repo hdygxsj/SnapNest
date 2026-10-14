@@ -36,7 +36,7 @@ enum TaskStoreError: LocalizedError {
     }
     func availableLists() -> [TaskList] {
         guard authorized else { return [] }
-        return store.calendars(for: .reminder).filter { $0.allowsContentModifications && $0.title == "SnapNest" }.map(summary)
+        return store.calendars(for: .reminder).filter { $0.allowsContentModifications && ["轻屿", "SnapNest"].contains($0.title) }.map(summary)
     }
     func sources() -> [TaskSource] {
         guard authorized else { return [] }
@@ -45,16 +45,16 @@ enum TaskStoreError: LocalizedError {
     }
     func createList(sourceID: String) throws -> TaskList {
         guard authorized, let source = store.source(withIdentifier: sourceID) else { throw TaskStoreError.message("账户不可用，请重新连接提醒事项。") }
-        if let existing = store.calendars(for: .reminder).first(where: { $0.source.sourceIdentifier == sourceID && $0.title == "SnapNest" && $0.allowsContentModifications }) { return summary(existing) }
+        if let existing = store.calendars(for: .reminder).first(where: { $0.source.sourceIdentifier == sourceID && ["轻屿", "SnapNest"].contains($0.title) && $0.allowsContentModifications }) { return summary(existing) }
         let list = EKCalendar(for: .reminder, eventStore: store)
-        list.title = "SnapNest"; list.source = source
+        list.title = "轻屿"; list.source = source
         try store.saveCalendar(list, commit: true)
         return summary(list)
     }
     private func calendar(_ id: String) throws -> EKCalendar {
         guard authorized else { throw TaskStoreError.message("提醒事项访问权限已关闭，请在系统设置中允许访问。") }
         guard let list = store.calendar(withIdentifier: id), list.allowsContentModifications,
-              list.allowedEntityTypes.contains(.reminder) else { throw TaskStoreError.message("SnapNest 列表已删除或不可写，请重新选择。") }
+              list.allowedEntityTypes.contains(.reminder) else { throw TaskStoreError.message("轻屿列表已删除或不可写，请重新选择。") }
         return list
     }
     func fetch(listID: String) async throws -> [TaskEntry] {
@@ -114,7 +114,7 @@ enum TaskStoreError: LocalizedError {
     func connect() async {
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
-            guard try await repository.requestAccess() else { error = "未获得提醒事项权限。请在系统设置 → 隐私与安全性 → 提醒事项中允许 SnapNest。"; connected = false; items = []; return }
+            guard try await repository.requestAccess() else { error = "未获得提醒事项权限。请在系统设置 → 隐私与安全性 → 提醒事项中允许轻屿。"; connected = false; items = []; return }
             await refresh()
         } catch { self.error = error.localizedDescription }
     }
@@ -157,7 +157,7 @@ enum TaskStoreError: LocalizedError {
         guard let id = listID else { return }
         guard let list = lists.first(where: { $0.id == id }) else {
             dataAvailable = false; items = []; boundList = nil; listID = nil; defaults.removeObject(forKey: "tasks.listID")
-            error = "原 SnapNest 列表已删除、改名或不可写，请重新选择或创建。"; return
+            error = "原待办列表已删除、改名或不可写，请重新选择或创建。"; return
         }
         boundList = list
         if draft == nil, let pending = pendingDraft { draft = pending; pendingDraft = nil }
@@ -263,10 +263,10 @@ struct TaskCenterView: View {
                             if let due = item.due { Text(due, style: .date).font(.caption).foregroundStyle(.secondary) }
                         }
                         Spacer(); Button("编辑") { model.draft = item }
-                    }.padding(.vertical, 3).listRowBackground(Color.primary.opacity(0.04))
-                }.scrollContentBackground(.hidden)
+                    }.padding(.vertical, 8).listRowBackground(Color.clear)
+                }.listStyle(.plain).scrollContentBackground(.hidden)
             } else {
-                Text("选择专用 SnapNest 列表，或在指定账户创建新列表。")
+                Text("选择专用轻屿列表，或在指定账户创建新列表。")
                 ForEach(model.lists) { list in
                     Button("使用 \(list.title) · \(list.source)") { model.bind(list); Task { await model.refresh() } }
                 }
@@ -274,12 +274,12 @@ struct TaskCenterView: View {
                     Text("请选择账户").tag("")
                     ForEach(model.sources) { source in Text(source.title).tag(source.id) }
                 }
-                Button("创建 SnapNest 列表") { Task { await model.createList(sourceID: sourceID) } }.disabled(sourceID.isEmpty)
+                Button("创建轻屿列表") { Task { await model.createList(sourceID: sourceID) } }.disabled(sourceID.isEmpty)
                 if model.sources.isEmpty { Text("没有可用账户。请先在系统提醒事项中配置账户，再刷新。") }
             }
             Spacer(minLength: 0)
             Toggle("常驻顶部显示待办数量", isOn: $model.islandEnabled)
-        }.padding(22).frame(minWidth: 420, minHeight: 400)
+        }.padding(28).frame(minWidth: 420, minHeight: 400)
             .disabled(model.busy)
 
     }
@@ -299,7 +299,7 @@ private struct TaskDraftView: View {
             Toggle("设置截止日期", isOn: $hasDue)
             if hasDue { DatePicker("截止日期", selection: $due, displayedComponents: [.date, .hourAndMinute]) }
             if let notice = model.composerNotice { Text(notice).foregroundStyle(.orange) }
-            if model.boundList == nil { Text("请取消并先连接提醒事项、选择 SnapNest 列表。新任务尚未保存。").foregroundStyle(.secondary) }
+            if model.boundList == nil { Text("请取消并先连接提醒事项、选择轻屿列表。新任务尚未保存。").foregroundStyle(.secondary) }
             if let error = model.error { Text(error).foregroundStyle(.red) }
             HStack {
                 Button("取消") { model.finishDraft(sessionID: original.sessionID) }.keyboardShortcut(.cancelAction).disabled(model.busy)
@@ -337,7 +337,7 @@ private struct TaskDraftView: View {
         let model = TaskCenterModel(repository: TaskPreviewRepository(), defaults: defaults)
         let onboarding = renderView(TaskCenterView(model: model), name: "tasks-onboarding", directory: directory, size: NSSize(width: 560, height: 620))
         model.connected = true; model.dataAvailable = true
-        model.boundList = TaskList(id: "preview-list", title: "SnapNest", source: "示例 iCloud 账户")
+        model.boundList = TaskList(id: "preview-list", title: "轻屿", source: "示例 iCloud 账户")
         model.items = [
             TaskEntry(id: "preview-1", title: "整理今天的产品讨论与下一步计划", due: Date(), completed: false),
             TaskEntry(id: "preview-2", title: "检查截图标注与导出效果", due: nil, completed: false),
@@ -347,16 +347,26 @@ private struct TaskDraftView: View {
         let composer = renderView(TaskDraftView(model: model, original: TaskEntry(id: "", title: "把选中的文字变为下一项任务", due: Date(), completed: false)), name: "tasks-composer", directory: directory, size: NSSize(width: 480, height: 360))
         let island = renderView(TaskIslandView(model: model, open: {}), name: "tasks-island", directory: directory, size: NSSize(width: 188, height: 56))
         let launcher = QuickLauncherController()
-        let controller = TaskIslandController(model: model, launcher: launcher, preview: true)
+        let captureModel = AppModel()
+        captureModel.items = ["tasks-list", "tasks-composer", "tasks-onboarding"].enumerated().map { index, name in
+            CaptureItem(id: UUID(), url: URL(fileURLWithPath: directory).appendingPathComponent(name + ".png"), date: Date().addingTimeInterval(Double(-index * 300)), kind: "区域截图")
+        }
+        let controller = TaskIslandController(model: model, launcher: launcher,
+            captureContent: AnyView(CaptureWorkspace(model: captureModel)),
+            settingsContent: AnyView(WorkspaceSettings(model: captureModel, selectedText: SelectedTextCapture())), preview: true)
         controller.expanded = true; controller.page = .tasks
-        let unifiedTasks = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-tasks", directory: directory, size: NSSize(width: 600, height: 570))
+        let unifiedTasks = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-tasks", directory: directory, size: NSSize(width: 800, height: 600))
         controller.page = .launcher
-        let unifiedLauncher = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-launcher", directory: directory, size: NSSize(width: 600, height: 570))
+        let unifiedLauncher = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-launcher", directory: directory, size: NSSize(width: 800, height: 600))
         var themes = true
         for dark in [false, true] {
             let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
             controller.expanded = true; controller.page = .tasks
-            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "workspace-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 600, height: 570), appearance: appearance) && themes
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "workspace-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 800, height: 600), appearance: appearance) && themes
+            for (page, name) in [(IslandPage.capture, "capture"), (.launcher, "launcher"), (.settings, "settings")] {
+                controller.page = page
+                themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: name + (dark ? "-dark" : "-light"), directory: directory, size: NSSize(width: 800, height: 600), appearance: appearance) && themes
+            }
             controller.expanded = false
             themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "count-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 192, height: 38), appearance: appearance) && themes
         }
@@ -368,7 +378,7 @@ private struct TaskDraftView: View {
         window.appearance = appearance
         window.contentView = view; view.frame = NSRect(origin: .zero, size: size)
         view.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.12))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.8))
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
         view.cacheDisplay(in: view.bounds, to: bitmap)
         guard let data = bitmap.representation(using: .png, properties: [:]) else { return false }

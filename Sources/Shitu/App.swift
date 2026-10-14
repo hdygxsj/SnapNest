@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var subscription: AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        WorkspaceTheme.shared.apply()
         model.presentEditor = { [weak self] image, kind, region in
             guard let self else { return }
             self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
@@ -102,8 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey.action = { [weak self] in self?.model.hotKeyPressed() }
         model.shortcutAvailable = hotKey.register()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "SnapNest")
-        statusItem.button?.toolTip = "SnapNest：点击展开快捷面板，右键打开菜单"
+        statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "轻屿")
+        statusItem.button?.toolTip = "轻屿：点击展开快捷面板，右键打开菜单"
         statusItem.button?.target = self
         statusItem.button?.action = #selector(toggleQuickPanel)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -121,11 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem(); mainMenu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "关于SnapNest", action: #selector(about), keyEquivalent: "")
+        appMenu.addItem(withTitle: "关于轻屿", action: #selector(about), keyEquivalent: "")
         let updateItem = appMenu.addItem(withTitle: "检查更新…", action: #selector(checkUpdates), keyEquivalent: "")
         updateItem.target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出SnapNest", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "退出轻屿", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = mainMenu
         showWindow()
         updates.checkOnLaunch()
@@ -133,9 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func updateMenu(_ phase: AppModel.Phase) {
         let active = phase == .recording || phase == .paused || phase == .scrolling
-        statusItem.button?.title = phase == .paused ? " SnapNest Ⅱ" : (active ? " SnapNest ●" : (updates.asset == nil ? " SnapNest" : " SnapNest ↑"))
+        statusItem.button?.title = phase == .paused ? " 轻屿 Ⅱ" : (active ? " 轻屿 ●" : (updates.asset == nil ? " 轻屿" : " 轻屿 ↑"))
         let menu = NSMenu()
-        add("打开SnapNest", action: #selector(showWindow), to: menu)
+        add("打开轻屿", action: #selector(showWindow), to: menu)
         add(launcherShortcutAvailable ? "快捷启动  ⌘⇧空格" : "快捷启动（快捷键被占用）", action: #selector(showLauncher), to: menu, enabled: !model.busy)
         add("待办与灵动岛", action: #selector(showTasks), to: menu, enabled: !model.busy)
         add("新增待办…", action: #selector(newTask), to: menu, enabled: !model.busy)
@@ -153,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         add(updates.asset == nil ? "检查更新…" : "下载新版本…", action: #selector(checkUpdates), to: menu, enabled: !model.busy)
-        add("退出SnapNest", action: #selector(quit), to: menu)
+        add("退出轻屿", action: #selector(quit), to: menu)
         contextMenu = menu
     }
     private func add(_ title: String, action: Selector, to menu: NSMenu, enabled: Bool = true) {

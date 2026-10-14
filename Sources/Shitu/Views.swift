@@ -34,7 +34,7 @@ struct MainView: View {
             HStack(spacing: 10) {
                 Image(systemName: "viewfinder").font(.system(size: 27, weight: .medium)).foregroundStyle(mint)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("SnapNest").font(.system(size: 23, weight: .semibold))
+                    Text("轻屿").font(.system(size: 23, weight: .semibold))
                     Text("SNAPNEST").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.7).foregroundStyle(.secondary)
                 }
             }.padding(.top, 18)
@@ -217,14 +217,14 @@ struct MainView: View {
                 Spacer()
                 Button("检查更新…") { model.checkForUpdates?() }
             }
-            Text("关闭主窗口后，SnapNest会留在顶部菜单栏。点击菜单栏“SnapNest”可展开快捷面板。")
+            Text("关闭主窗口后，轻屿会留在顶部菜单栏。点击菜单栏“轻屿”可展开快捷面板。")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             Divider()
             Text("启动设置").font(.headline)
             Toggle("登录时自动启动", isOn: Binding(get: { loginItems.isRegistered }, set: { enabled in
                 Task { await loginItems.setEnabled(enabled) }
             })).disabled(loginItems.isChanging)
-            Text("登录 Mac 后自动打开SnapNest，可随时使用 ⌘⇧X 截图。")
+            Text("登录 Mac 后自动打开轻屿，可随时使用 ⌘⇧X 截图。")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             if loginItems.status == .requiresApproval {
                 HStack {
@@ -233,7 +233,7 @@ struct MainView: View {
                 }
             }
             if loginItems.status == .notFound {
-                Text("请从完整的SnapNest.app 启动后设置登录项。")
+                Text("请从完整的轻屿.app 启动后设置登录项。")
                     .font(.system(size: 11)).foregroundStyle(.orange)
             }
             if let error = loginItems.errorMessage {
@@ -262,7 +262,7 @@ struct MainView: View {
                 Spacer()
                 Text("⌘ ⇧ X").font(.system(size: 14, design: .monospaced)).foregroundStyle(mint)
             }
-            Text(model.shortcutAvailable ? "空闲时框选截图；长截图时完成拼接，录屏时结束并保存。" : "快捷键注册失败，可能被其他应用占用。请关闭冲突应用后重启SnapNest。")
+            Text(model.shortcutAvailable ? "空闲时框选截图；长截图时完成拼接，录屏时结束并保存。" : "快捷键注册失败，可能被其他应用占用。请关闭冲突应用后重启轻屿。")
                 .font(.system(size: 11)).foregroundStyle(model.shortcutAvailable ? Color.secondary : Color.orange)
             Divider()
             HStack {
@@ -277,9 +277,9 @@ struct MainView: View {
             HStack(spacing: 12) {
                 Image(systemName: "lock.rectangle").font(.title2).foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.permissionNeedsRecovery ? "系统拒绝了当前版本的屏幕捕获" : "为当前版本的SnapNest开启屏幕录制权限")
+                    Text(model.permissionNeedsRecovery ? "系统拒绝了当前版本的屏幕捕获" : "为当前版本的轻屿开启屏幕录制权限")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("授权开关已打开仍报错时，请关闭再开启，然后退出并重新打开SnapNest。")
+                    Text("授权开关已打开仍报错时，请关闭再开启，然后退出并重新打开轻屿。")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -290,7 +290,7 @@ struct MainView: View {
                 }
                 Button(model.checkingPermission ? "检查中…" : "检查权限") { model.checkPermission() }
                     .disabled(model.checkingPermission || model.busy)
-                Button("退出SnapNest") { model.quitForPermission() }.disabled(model.busy)
+                Button("退出轻屿") { model.quitForPermission() }.disabled(model.busy)
                 Spacer()
                 Button("定位当前应用") { model.revealApplication() }.buttonStyle(.plain).foregroundStyle(mint)
             }.font(.system(size: 11))
@@ -318,7 +318,7 @@ struct CaptureHUD: View {
                         let seconds = Int(model.recordedSeconds)
                         Text(String(format: "%02d:%02d", seconds / 60, seconds % 60)).font(.system(size: 16, weight: .medium, design: .monospaced))
                     }
-                } else { Text(model.phase == .scrolling ? "长截图 · \(model.pixelHeight) px" : "SnapNest").font(.system(size: 13, weight: .semibold)) }
+                } else { Text(model.phase == .scrolling ? "长截图 · \(model.pixelHeight) px" : "轻屿").font(.system(size: 13, weight: .semibold)) }
                 Text(model.status).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer()

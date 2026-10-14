@@ -13,7 +13,7 @@ final class PinnedImages: NSObject, NSWindowDelegate {
         let panel = NSPanel(contentRect: CGRect(origin: CGPoint(x: max(available.minX, min(frame.minX, available.maxX - size.width)),
             y: max(available.minY, min(frame.minY, available.maxY - size.height))), size: size),
             styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.title = "SnapNest · 钉图"
+        panel.title = "轻屿 · 钉图"
         panel.level = .floating; panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false; panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
