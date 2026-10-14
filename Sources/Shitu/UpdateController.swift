@@ -5,12 +5,13 @@ import CryptoKit
 
 @MainActor
 final class UpdateController: ObservableObject {
+    static let isPrivateEdition = true
     static let releasesURL = URL(string: "https://github.com/hdygxsj/SnapNest/releases")!
-    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
     @Published var automaticallyCheck = UserDefaults.standard.object(forKey: "automaticallyCheckUpdates") as? Bool ?? true {
         didSet { UserDefaults.standard.set(automaticallyCheck, forKey: "automaticallyCheckUpdates") }
     }
-    @Published private(set) var status = "检查 GitHub 上的最新正式版本。"
+    @Published private(set) var status = "2.0 私有版本，尚未配置更新渠道。"
     @Published private(set) var busy = false
     @Published private(set) var release: AppRelease?
     @Published private(set) var downloadedURL: URL?
@@ -35,11 +36,12 @@ final class UpdateController: ObservableObject {
         Task { await check() }
     }
     func checkOnLaunch() {
-        guard automaticallyCheck,
+        guard !Self.isPrivateEdition, automaticallyCheck,
               Date().timeIntervalSince(UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast) > 86400 else { return }
         Task { await check() }
     }
     func check() async {
+        guard !Self.isPrivateEdition else { status = "2.0 私有版本，更新由开发者提供安装包。"; return }
         guard !busy else { return }
         busy = true
         status = "正在检查更新…"
@@ -64,7 +66,7 @@ final class UpdateController: ObservableObject {
         } catch { status = "检查更新失败：\(error.localizedDescription)" }
     }
     func download() async {
-        guard !busy, let asset else { return }
+        guard !Self.isPrivateEdition, !busy, let asset else { return }
         busy = true
         status = "正在下载新版，请稍候…"
         defer { busy = false }
@@ -98,16 +100,16 @@ struct UpdateView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("SnapNest · 拾图").font(.title2.bold())
             Text("当前版本 \(updates.currentVersion)").foregroundStyle(.secondary)
-            Toggle("启动时自动检查更新", isOn: $updates.automaticallyCheck)
+            if !UpdateController.isPrivateEdition { Toggle("启动时自动检查更新", isOn: $updates.automaticallyCheck) }
             Text(updates.status).font(.callout).textSelection(.enabled)
             if updates.busy { ProgressView().controlSize(.small) }
             ScrollView {
-                Text(updates.release?.body ?? "有新版时，可在这里查看说明并下载安装包。")
+                Text(updates.release?.body ?? "当前版本不连接 GitHub / Gitee 更新渠道。请使用开发者提供的新版安装包更新。")
                     .font(.system(size: 12)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {
                 Button("检查更新") { Task { await updates.check() } }.disabled(updates.busy)
-                Button("发布页") { NSWorkspace.shared.open(UpdateController.releasesURL) }
+                if !UpdateController.isPrivateEdition { Button("发布页") { NSWorkspace.shared.open(UpdateController.releasesURL) } }
                 Spacer()
                 if let url = updates.downloadedURL {
                     Button("显示安装包") { NSWorkspace.shared.activateFileViewerSelecting([url]) }

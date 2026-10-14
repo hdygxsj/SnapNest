@@ -43,6 +43,11 @@ struct MenuBarPanel: View {
             }
             Divider()
             HStack {
+                Button("快捷启动") { model.openLauncher?() }
+                Button("待办与灵动岛") { model.openTasks?() }
+                Button("划词设置") { model.openSelectionSettings?() }
+            }.disabled(model.busy)
+            HStack {
                 Button("打开主界面", action: open)
                 Spacer()
                 Button(updates.asset == nil ? "检查更新" : "发现新版本 ↑", action: checkUpdates).disabled(model.busy)

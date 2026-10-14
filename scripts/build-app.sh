@@ -13,6 +13,7 @@ cp "$BIN_DIR/Shitu" "$APP/Contents/MacOS/Shitu"
 swift scripts/make-icon.swift .build/AppIcon.iconset
 iconutil -c icns .build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
 SIGNING_IDENTITY="${SHITU_SIGNING_IDENTITY:--}"
 codesign --force --sign "$SIGNING_IDENTITY" --identifier com.shitu.capture "$APP"
 codesign --verify --deep --strict "$APP"

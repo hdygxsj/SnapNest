@@ -50,6 +50,9 @@ final class AppModel: ObservableObject {
     var canRepeatCapture: Bool { !busy && lastCapture != nil }
     var presentEditor: ((CGImage, String, CaptureRegion?) -> Void)?
     var checkForUpdates: (() -> Void)?
+    var openLauncher: (() -> Void)?
+    var openTasks: (() -> Void)?
+    var openSelectionSettings: (() -> Void)?
     var showMain: (() -> Void)?
     var hideMain: (() -> Void)?
     var showHUD: (() -> Void)?

@@ -42,7 +42,11 @@ struct MainView: View {
                 nav("工作台", icon: "square.grid.2x2")
                 nav("捕捉记录", icon: "clock.arrow.circlepath")
                 nav("偏好设置", icon: "slider.horizontal.3")
-            }
+                Divider()
+                Button { model.openLauncher?() } label: { Label("快捷启动", systemImage: "command").frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+                Button { model.openTasks?() } label: { Label("待办与灵动岛", systemImage: "checklist").frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+                Button { model.openSelectionSettings?() } label: { Label("划词添加", systemImage: "text.cursor").frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+            }.buttonStyle(.plain).disabled(model.busy)
             Spacer()
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "command").font(.system(size: 20)).foregroundStyle(mint)

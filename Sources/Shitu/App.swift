@@ -1,10 +1,21 @@
 import AppKit
 import SwiftUI
 import Combine
+import Carbon
 
 @main
 struct ShituApp {
     @MainActor static func main() {
+        if let index = CommandLine.arguments.firstIndex(of: "--render-v2"), CommandLine.arguments.count > index + 1 {
+            exit(TaskCenterPreview.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
+        }
+        if CommandLine.arguments.contains("--verify-v2") {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            Task { exit(await TaskCenterVerification.run() ? 0 : 1) }
+            app.run()
+            return
+        }
         if let index = CommandLine.arguments.firstIndex(of: "--render-hud"), CommandLine.arguments.count > index + 1 {
             exit(ToolbarVerification.renderHUD(to: CommandLine.arguments[index + 1]) ? 0 : 1)
         }
@@ -42,6 +53,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
     private let editor = EditorController()
     private let hotKey = HotKey()
+    private let launcherKey = HotKey()
+    private let taskKey = HotKey()
+    private let launcher = QuickLauncherController()
+    private let taskCenter = TaskCenterController()
+    private let selectedText = SelectedTextCapture()
+    private var launcherShortcutAvailable = false
     private let residentWindowDelegate = ResidentWindowDelegate()
     private let updates = UpdateController()
     private let quickPanel = NSPopover()
@@ -72,6 +89,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }, closed: { [weak self] in self?.model.closeEditor() })
         }
         editor.regionChanged = { [weak self] in self?.model.rememberRegion($0) }
+        model.openLauncher = { [weak self] in self?.showLauncher() }
+        model.openTasks = { [weak self] in self?.showTasks() }
+        model.openSelectionSettings = { [weak self] in self?.selectionPreferences() }
+        selectedText.canCapture = { [weak self] in self?.model.busy == false }
+        selectedText.addTask = { [weak self] text in self?.taskCenter.showComposer(text: text) }
+        selectedText.start()
+        taskCenter.start()
+        launcherKey.action = { [weak self] in self?.showLauncher() }
+        launcherShortcutAvailable = launcherKey.register(keyCode: UInt32(kVK_Space), identifier: 2)
+        taskKey.action = { [weak self] in self?.selectedText.capture() }
+        if !taskKey.register(keyCode: UInt32(kVK_ANSI_T), identifier: 3) {
+            selectedText.shortcutMessage = "⌘⇧T 被其他应用占用。可开启划词按钮，或从菜单栏添加待办。"
+        }
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { [weak self] in self?.window.orderOut(nil); NSApp.hide(nil) }
@@ -96,7 +126,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { guard let self else { return }; self.updateMenu(self.model.phase) }
         }
         subscription = model.$phase.sink { [weak self] phase in
-            DispatchQueue.main.async { self?.updateMenu(phase) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.updateMenu(phase)
+                self.taskCenter.setCaptureActive(phase != .idle)
+                if phase != .idle { self.launcher.hide(); self.selectedText.dismiss() }
+            }
         }
         let mainMenu = NSMenu()
         let appItem = NSMenuItem(); mainMenu.addItem(appItem)
@@ -116,6 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.title = phase == .paused ? " 拾图 Ⅱ" : (active ? " 拾图 ●" : (updates.asset == nil ? " 拾图" : " 拾图 ↑"))
         let menu = NSMenu()
         add("打开拾图", action: #selector(showWindow), to: menu)
+        add(launcherShortcutAvailable ? "快捷启动  ⌘⇧空格" : "快捷启动（快捷键被占用）", action: #selector(showLauncher), to: menu, enabled: !model.busy)
+        add("待办与灵动岛", action: #selector(showTasks), to: menu, enabled: !model.busy)
+        add("新增待办…", action: #selector(newTask), to: menu, enabled: !model.busy)
+        add("划词添加设置…", action: #selector(selectionPreferences), to: menu, enabled: !model.busy)
         menu.addItem(.separator())
         if active {
             if model.isRecordingSession { add(phase == .paused ? "继续录制" : "暂停录制", action: #selector(toggleRecordingPause), to: menu, enabled: model.canToggleRecording) }
@@ -167,6 +206,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if quickPanel.isShown { quickPanel.performClose(nil) }
         else { quickPanel.show(relativeTo: button.bounds, of: button, preferredEdge: .minY) }
     }
+    @objc private func showLauncher() {
+        guard !model.busy else { return }
+        quickPanel.performClose(nil); launcher.show()
+    }
+    @objc private func showTasks() {
+        guard !model.busy else { return }
+        quickPanel.performClose(nil); taskCenter.showTasks()
+    }
+    @objc private func newTask() {
+        guard !model.busy else { return }
+        quickPanel.performClose(nil); taskCenter.showComposer(text: "")
+    }
+    @objc private func selectionPreferences() {
+        guard !model.busy else { return }
+        quickPanel.performClose(nil); selectedText.showPreferences()
+    }
     @objc private func checkUpdates() {
         guard !model.busy else { return }
         updates.checkManually()
@@ -186,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func stop() { model.stop() }
     @objc private func toggleRecordingPause() { model.toggleRecordingPause() }
     @objc private func quit() { NSApp.terminate(nil) }
-    @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: updates.currentVersion, .credits: NSAttributedString(string: "截图 · 长截图 · 录屏\n所有内容仅保存在本机")]) }
+    @objc private func about() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "拾图", .applicationVersion: updates.currentVersion, .credits: NSAttributedString(string: "截图 · 录屏 · 快捷启动 · 待办\n截图保存在本机；提醒事项由系统账号同步。\n2.0 私有版本")]) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
