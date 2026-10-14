@@ -188,6 +188,7 @@ enum TaskStoreError: LocalizedError {
     private var island: TaskIslandController?
     var captureContent: AnyView?
     var settingsContent: AnyView?
+    var officeContent: AnyView?
     private var observers: [NSObjectProtocol] = []
     private var subscriptions: Set<AnyCancellable> = []
     init(repository: TaskRepository? = nil, defaults: UserDefaults = .standard) {
@@ -195,7 +196,7 @@ enum TaskStoreError: LocalizedError {
     }
     func start() {
         guard island == nil else { return }
-        island = TaskIslandController(model: model, launcher: QuickLauncherController.shared, captureContent: captureContent, settingsContent: settingsContent)
+        island = TaskIslandController(model: model, launcher: QuickLauncherController.shared, captureContent: captureContent, settingsContent: settingsContent, officeContent: officeContent)
         for name in [Notification.Name.EKEventStoreChanged, NSApplication.didBecomeActiveNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.model.refresh() }
@@ -216,6 +217,7 @@ enum TaskStoreError: LocalizedError {
     }
     func showPage(_ page: IslandPage) { if island == nil { start() }; island?.expand(page) }
     func setCaptureActive(_ active: Bool) { island?.setCaptureActive(active) }
+    func setModalActivity(_ active: Bool) { island?.modalActivity = active }
 
 }
 

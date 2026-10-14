@@ -3,13 +3,15 @@ import AppKit
 import SwiftUI
 import Combine
 
-enum IslandPage { case launcher, tasks, capture, settings }
+enum IslandPage { case launcher, tasks, capture, office, settings }
 
 @MainActor final class TaskIslandController: ObservableObject {
     @Published var expanded = false
     @Published var page: IslandPage = .launcher
     let captureContent: AnyView?
     let settingsContent: AnyView?
+    let officeContent: AnyView?
+    var modalActivity = false
     private let model: TaskCenterModel
     private let launcher: QuickLauncherController
     private let panel = IslandPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -18,9 +20,9 @@ enum IslandPage { case launcher, tasks, capture, settings }
     private var screenObserver: NSObjectProtocol?
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
-    init(model: TaskCenterModel, launcher: QuickLauncherController, captureContent: AnyView? = nil, settingsContent: AnyView? = nil, preview: Bool = false) {
+    init(model: TaskCenterModel, launcher: QuickLauncherController, captureContent: AnyView? = nil, settingsContent: AnyView? = nil, officeContent: AnyView? = nil, preview: Bool = false) {
         self.model = model; self.launcher = launcher
-        self.captureContent = captureContent; self.settingsContent = settingsContent
+        self.captureContent = captureContent; self.settingsContent = settingsContent; self.officeContent = officeContent
         if preview { return }
         panel.level = .floating; panel.isOpaque = false; panel.backgroundColor = .clear
         panel.hasShadow = true; panel.hidesOnDeactivate = false
@@ -34,17 +36,17 @@ enum IslandPage { case launcher, tasks, capture, settings }
         }
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.panel.attachedSheet == nil else { return }
+                guard let self, self.panel.attachedSheet == nil, !self.modalActivity else { return }
                 self.collapse()
             }
         }
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
             if event.type != .keyDown {
-                if let self, event.window !== self.panel, self.panel.attachedSheet == nil { self.collapse() }
+                if let self, event.window !== self.panel, self.panel.attachedSheet == nil, !self.modalActivity { self.collapse() }
                 return event
             }
             guard let self, event.window === self.panel, event.keyCode == 53,
-                  self.panel.attachedSheet == nil else { return event }
+                  self.panel.attachedSheet == nil, !self.modalActivity else { return event }
             if let editor = self.panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
             self.collapse(); return nil
         }
@@ -59,7 +61,7 @@ enum IslandPage { case launcher, tasks, capture, settings }
         if page == .launcher { launcher.activate(in: panel) }
     }
     func collapse() {
-        guard expanded, panel.attachedSheet == nil else { return }
+        guard expanded, panel.attachedSheet == nil, !modalActivity else { return }
         launcher.deactivate(); expanded = false; panel.resignKey(); update()
     }
     func setCaptureActive(_ active: Bool) {
@@ -129,6 +131,7 @@ struct UnifiedIslandView: View {
             tab("截图", page: .capture, icon: "viewfinder")
             tab("启动", page: .launcher, icon: "square.grid.2x2")
             tab("待办", page: .tasks, icon: "checkmark.square")
+            tab("办公", page: .office, icon: "briefcase")
             tab("设置", page: .settings, icon: "gearshape")
             Spacer(minLength: 0)
             Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(12) }.help("收起 · Esc")
@@ -141,6 +144,7 @@ struct UnifiedIslandView: View {
         case .launcher: QuickLauncherView(model: launcher)
         case .tasks: TaskCenterView(model: model)
         case .capture: controller.captureContent ?? AnyView(Text("截图工具"))
+        case .office: controller.officeContent ?? AnyView(Text("办公工具"))
         case .settings: controller.settingsContent ?? AnyView(Text("外观设置"))
         }
     }

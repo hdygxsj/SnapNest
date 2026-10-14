@@ -139,12 +139,13 @@ struct ProSettings: View {
                 if store.isPro { Label("已解锁", systemImage: "checkmark.seal.fill").foregroundStyle(WorkspaceTheme.accent(scheme)).font(.callout) }
                 else { Text(store.price.map { "\($0) · 一次性买断" } ?? "计划售价 ¥12 · 一次性买断").font(.callout) }
             }
-            Text("PNG 保留 Retina 原始像素 · GIF 最高 1920 像素 / 20 fps").font(.callout)
+            Text("高清 PNG / GIF · 图文教程 · 文件暂存篮 · 工作现场 · 截图对比").font(.callout)
+            Text("PNG 保留 Retina 原始像素，GIF 最高 1920 像素 / 20 fps。办公工具在本机处理资料。").font(.caption).foregroundStyle(.secondary)
             Text("标准画质：PNG 逻辑尺寸，GIF 960 像素 / 10 fps。GIF 仍有 256 色格式限制；实际分辨率不超过录制源。").font(.caption).foregroundStyle(.secondary)
             if store.isPro {
                 Toggle("默认使用高清画质", isOn: $store.prefersHD)
             } else {
-                Button(store.busy ? "正在连接…" : "解锁高清画质") { Task { await store.buy() } }
+                Button(store.busy ? "正在连接…" : "解锁轻屿 Pro") { Task { await store.buy() } }
                     .buttonStyle(.borderedProminent).disabled(store.busy || store.price == nil)
             }
             HStack {

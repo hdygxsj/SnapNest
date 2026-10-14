@@ -49,6 +49,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastCapture: SavedCaptureRegion?
     var canRepeatCapture: Bool { !busy && lastCapture != nil }
     var showPro: (() -> Void)?
+    private var officeCapture: ((CGImage?) -> Void)?
+    func captureForTutorial(_ completion: @escaping (CGImage?) -> Void) {
+        guard !busy, !checkingPermission else { completion(nil); return }
+        officeCapture = completion
+        begin(.area)
+        if !busy { officeCapture = nil; completion(nil) }
+    }
     var presentEditor: ((CGImage, String, CaptureRegion?) -> Void)?
     var checkForUpdates: (() -> Void)?
     var openLauncher: (() -> Void)?
@@ -353,6 +360,10 @@ final class AppModel: ObservableObject {
         edit(EditorVerification.fixture(), kind: "编辑器示例", region: region)
     }
     private func edit(_ image: CGImage, kind: String, region: CaptureRegion?) {
+        if let completion = officeCapture {
+            officeCapture = nil; reset()
+            completion(image); return
+        }
         phase = .editing
         status = "编辑截图，或使用同一区域继续捕捉"
         presentEditor?(image, kind, region)
@@ -432,6 +443,7 @@ final class AppModel: ObservableObject {
     func reveal(_ item: CaptureItem) { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
     func preview(_ item: CaptureItem) { NSWorkspace.shared.open(item.url) }
     private func reset(keepStatus: Bool = false) {
+        if let completion = officeCapture { officeCapture = nil; Task { @MainActor in completion(nil) } }
         phase = .idle; startedAt = nil
         recordingClock = RecordingClock(); recordingTransition = false; stopRequested = false
         hideHUD?()

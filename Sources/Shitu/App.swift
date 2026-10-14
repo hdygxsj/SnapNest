@@ -6,6 +6,14 @@ import Carbon
 @main
 struct ShituApp {
     @MainActor static func main() {
+        if CommandLine.arguments.contains("--verify-office") {
+            _ = NSApplication.shared
+            exit(OfficeVerification.run() ? 0 : 1)
+        }
+        if let index = CommandLine.arguments.firstIndex(of: "--render-office"), CommandLine.arguments.count > index + 1 {
+            _ = NSApplication.shared
+            exit(OfficeVerification.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
+        }
         if let index = CommandLine.arguments.firstIndex(of: "--render-v2"), CommandLine.arguments.count > index + 1 {
             exit(TaskCenterPreview.render(to: CommandLine.arguments[index + 1]) ? 0 : 1)
         }
@@ -51,6 +59,7 @@ struct ShituApp {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
+    private let office = OfficeModel()
     private let editor = EditorController()
     private let hotKey = HotKey()
     private let launcherKey = HotKey()
@@ -65,6 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hud: NSPanel?
     private var statusItem: NSStatusItem!
     private var subscription: AnyCancellable?
+    private var fileDragMonitor: Any?
+    private var lastShelfReveal = Date.distantPast
     func applicationDidFinishLaunching(_ notification: Notification) {
         WorkspaceTheme.shared.apply()
         ProStore.shared.start()
@@ -86,7 +97,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectedText.start()
         taskCenter.captureContent = AnyView(CaptureWorkspace(model: model))
         taskCenter.settingsContent = AnyView(WorkspaceSettings(model: model, selectedText: selectedText))
+        taskCenter.officeContent = AnyView(OfficeWorkspace(model: office, upgrade: { [weak self] in self?.taskCenter.showPage(.settings) }))
+        office.tutorials.panelActivity = { [weak self] in self?.taskCenter.setModalActivity($0) }
+        office.tutorials.requestCapture = { [weak self] in
+            guard let self else { return }
+            self.model.captureForTutorial { [weak self] image in
+                guard let self else { return }
+                if let image { self.office.tutorials.acceptCapture(image) }
+                else { self.office.tutorials.cancelCapture(); self.office.tutorials.message = self.model.error ?? "截图已取消。" }
+                Task { @MainActor in
+                    self.taskCenter.setCaptureActive(false)
+                    self.taskCenter.showPage(.office)
+                }
+            }
+        }
         taskCenter.start()
+        fileDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, ProStore.shared.isPro, !self.model.busy,
+                      Date().timeIntervalSince(self.lastShelfReveal) > 1,
+                      NSPasteboard(name: .drag).types?.contains(.fileURL) == true else { return }
+                let point = NSEvent.mouseLocation
+                guard let screen = NSScreen.screens.first, screen.frame.contains(point),
+                      point.y >= screen.visibleFrame.maxY - 28,
+                      abs(point.x - screen.visibleFrame.midX) < 220 else { return }
+                self.lastShelfReveal = Date(); self.office.page = 1
+                self.taskCenter.showPage(.office)
+            }
+        }
         launcherKey.action = { [weak self] in self?.showLauncher() }
         launcherShortcutAvailable = launcherKey.register(keyCode: UInt32(kVK_Space), identifier: 2)
         launcher.shortcutAvailable = launcherShortcutAvailable
