@@ -66,6 +66,22 @@ func checkGIFExport() async throws {
     let gifInfo = global[kCGImagePropertyGIFDictionary] as! NSDictionary
     XCTAssertEqual((gifInfo[kCGImagePropertyGIFLoopCount] as! NSNumber).intValue, 0)
     print("GIF export verified: 10 frames, 100 × 80, 0.1s delay, infinite loop")
+    let hdGIF = directory.appendingPathComponent("hd.gif")
+    try await GIFExporter.export(video: video, to: hdGIF, quality: .highDefinition)
+    let hdSource = CGImageSourceCreateWithURL(hdGIF as CFURL, nil)!
+    XCTAssertEqual(CGImageSourceGetCount(hdSource), 20)
+    let hdImage = CGImageSourceCreateImageAtIndex(hdSource, 0, nil)!
+    XCTAssertEqual(hdImage.width, 100) // Never invent extra pixels for a small source.
+    XCTAssertEqual(hdImage.height, 80)
+    let hdProperties = CGImageSourceCopyPropertiesAtIndex(hdSource, 0, nil)! as NSDictionary
+    let hdFrame = hdProperties[kCGImagePropertyGIFDictionary] as! NSDictionary
+    XCTAssertEqual((hdFrame[kCGImagePropertyGIFUnclampedDelayTime] as! NSNumber).doubleValue, 0.05)
+    XCTAssertEqual(ExportQuality.resolved(pro: false, prefersHD: true), .standard)
+    XCTAssertEqual(ExportQuality.resolved(pro: true, prefersHD: false), .standard)
+    XCTAssertEqual(ExportQuality.resolved(pro: true, prefersHD: true), .highDefinition)
+    XCTAssertEqual(ExportQuality.standard.pngScale(nativeScale: 2), 1)
+    XCTAssertEqual(ExportQuality.highDefinition.pngScale(nativeScale: 2), 2)
+    print("HD quality verified: 20 fps timing, no upscaling, entitlement gate and Retina PNG scale")
 }
 
 private func checkRecordingAudio(video: URL, directory: URL) async throws {

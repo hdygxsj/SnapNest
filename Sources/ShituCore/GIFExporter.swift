@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 public enum GIFExporter {
     public static let fps = 10
     public static let maximumDuration = 30.0
-    public static func export(video: URL, to destination: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+    public static func export(video: URL, to destination: URL, quality: ExportQuality = .standard, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        let fps = quality.gifFramesPerSecond
         let asset = AVURLAsset(url: video)
         let duration = try await asset.load(.duration).seconds
         guard duration.isFinite, duration > 0 else { throw CaptureFailure(message: "录制时间太短，无法生成 GIF。") }
@@ -19,7 +20,7 @@ public enum GIFExporter {
         CGImageDestinationSetProperties(output, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 960, height: 960)
+        generator.maximumSize = CGSize(width: quality.gifMaximumDimension, height: quality.gifMaximumDimension)
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
         for frame in 0..<count {

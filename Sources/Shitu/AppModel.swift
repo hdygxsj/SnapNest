@@ -48,6 +48,7 @@ final class AppModel: ObservableObject {
     @Published var pixelHeight = 0
     @Published private(set) var lastCapture: SavedCaptureRegion?
     var canRepeatCapture: Bool { !busy && lastCapture != nil }
+    var showPro: (() -> Void)?
     var presentEditor: ((CGImage, String, CaptureRegion?) -> Void)?
     var checkForUpdates: (() -> Void)?
     var openLauncher: (() -> Void)?
@@ -185,6 +186,7 @@ final class AppModel: ObservableObject {
         }
     }
     private func launch(_ mode: CaptureMode, region: CaptureRegion) {
+        let quality = ExportQuality.resolved(pro: ProStore.shared.isPro, prefersHD: ProStore.shared.prefersHD)
         phase = .capturing
         captureTask = Task {
             do {
@@ -216,7 +218,7 @@ final class AppModel: ObservableObject {
                                     defer { try? FileManager.default.removeItem(at: url) }
                                     do {
                                         let output = try self.destination(extension: "gif")
-                                        try await GIFExporter.export(video: url, to: output) { [weak self] progress in
+                                        try await GIFExporter.export(video: url, to: output, quality: quality) { [weak self] progress in
                                             Task { @MainActor in
                                                 if self?.phase == .stopping { self?.status = "正在导出 GIF · \(Int(progress * 100))%" }
                                             }
@@ -236,7 +238,7 @@ final class AppModel: ObservableObject {
                             self.fail(error)
                         }
                     }
-                    try await engine.startRecording(region, audio: mode == .gif ? false : audio, to: url, gif: mode == .gif)
+                    try await engine.startRecording(region, audio: mode == .gif ? false : audio, to: url, gif: mode == .gif, quality: quality)
                     if Task.isCancelled {
                         phase = .stopping
                         try await engine.stopRecording()
@@ -259,7 +261,7 @@ final class AppModel: ObservableObject {
                 } else if mode == .long {
                     let session = LongCapture()
                     longCapture = session
-                    let first = try await engine.screenshot(region)
+                    let first = try await engine.screenshot(region, quality: quality)
                     try Task.checkCancellation()
                     _ = try await session.append(first)
                     phase = .scrolling; frameCount = 1; pixelHeight = first.height
@@ -270,7 +272,7 @@ final class AppModel: ObservableObject {
                         while !Task.isCancelled && self.phase == .scrolling {
                             do {
                                 try await Task.sleep(for: .milliseconds(850))
-                                let image = try await self.engine.screenshot(region)
+                                let image = try await self.engine.screenshot(region, quality: quality)
                                 guard !Task.isCancelled else { break }
                                 let result = try await session.append(image)
                                 guard self.phase == .scrolling else { break }
@@ -287,7 +289,7 @@ final class AppModel: ObservableObject {
                         }
                     }
                 } else {
-                    let image = try await engine.screenshot(region)
+                    let image = try await engine.screenshot(region, quality: quality)
                     try Task.checkCancellation()
                     rememberRegion(region)
                     edit(image, kind: mode.rawValue, region: region)

@@ -7,6 +7,7 @@ struct CaptureWorkspace: View {
     @ObservedObject var model: AppModel
     @Environment(\.colorScheme) private var scheme
     @State private var showAll = false
+    @ObservedObject private var pro = ProStore.shared
     private var dark: Bool { scheme == .dark }
     private var accent: Color { WorkspaceTheme.accent(scheme) }
     var body: some View {
@@ -19,6 +20,8 @@ struct CaptureWorkspace: View {
                             Text("拖动选择区域，松开即可截取").font(.system(size: 14)).foregroundStyle(.secondary)
                         }
                         Spacer()
+                        Button(pro.highDefinition ? "Pro · 高清" : (pro.isPro ? "Pro · 标准画质" : "标准画质 · 升级 Pro")) { model.showPro?() }
+                            .font(.caption).foregroundStyle(accent)
                     }.padding(.vertical, 8)
                     HStack(spacing: 12) {
                         captureButton(.area, "区域截图", "viewfinder", large: true)
@@ -120,6 +123,7 @@ struct WorkspaceSettings: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("设置").font(.title2.bold())
+                ProSettings(store: ProStore.shared)
                 VStack(alignment: .leading, spacing: 12) {
                     Label("外观", systemImage: "circle.lefthalf.filled").font(.headline)
                     Picker("主题", selection: $theme.selection) {

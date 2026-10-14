@@ -67,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var subscription: AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
         WorkspaceTheme.shared.apply()
+        ProStore.shared.start()
         model.presentEditor = { [weak self] image, kind, region in
             guard let self else { return }
             self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
@@ -95,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         launcher.canLaunchApplication = { [weak self] in self?.model.busy == false }
         launcher.startApplicationShortcuts()
+        model.showPro = { [weak self] in self?.taskCenter.showPage(.settings) }
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { NSApp.hide(nil) }

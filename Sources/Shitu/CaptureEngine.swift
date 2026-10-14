@@ -38,7 +38,7 @@ final class CaptureEngine: NSObject {
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         return (filter, config)
     }
-    func screenshot(_ region: CaptureRegion) async throws -> CGImage {
+    func screenshot(_ region: CaptureRegion, quality: ExportQuality = .highDefinition) async throws -> CGImage {
         if let id = region.windowID {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let window = content.windows.first(where: { $0.windowID == id }) else {
@@ -46,22 +46,24 @@ final class CaptureEngine: NSObject {
             }
             let filter = SCContentFilter(desktopIndependentWindow: window)
             let config = SCStreamConfiguration()
-            config.width = max(2, Int(window.frame.width * region.scale))
-            config.height = max(2, Int(window.frame.height * region.scale))
+            config.width = max(2, Int((window.frame.width * quality.pngScale(nativeScale: Double(filter.pointPixelScale))).rounded()))
+            config.height = max(2, Int((window.frame.height * quality.pngScale(nativeScale: Double(filter.pointPixelScale))).rounded()))
             config.ignoreShadowsSingleWindow = true
             config.showsCursor = false
             return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
         }
         let (filter, config) = try await configuration(for: region)
+        config.width = max(2, Int((config.sourceRect.width * quality.pngScale(nativeScale: Double(filter.pointPixelScale))).rounded()))
+        config.height = max(2, Int((config.sourceRect.height * quality.pngScale(nativeScale: Double(filter.pointPixelScale))).rounded()))
         return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
-    func startRecording(_ region: CaptureRegion, audio: Bool, to url: URL, gif: Bool = false) async throws {
+    func startRecording(_ region: CaptureRegion, audio: Bool, to url: URL, gif: Bool = false, quality: ExportQuality = .standard) async throws {
         let (filter, config) = try await configuration(for: region, audio: audio)
         // H.264 encoder limit: preserve aspect ratio on large Retina displays.
         let ratio = gif
-            ? min(1, 960.0 / Double(max(config.width, config.height)))
+            ? min(1, Double(quality.gifMaximumDimension) / Double(max(config.width, config.height)))
             : min(1, min(3840.0 / Double(config.width), 2160.0 / Double(config.height)))
-        if gif { config.minimumFrameInterval = CMTime(value: 1, timescale: 10) }
+        if gif { config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(quality.gifFramesPerSecond)) }
         config.width = max(2, Int(Double(config.width) * ratio) / 2 * 2)
         config.height = max(2, Int(Double(config.height) * ratio) / 2 * 2)
         config.showsCursor = true
