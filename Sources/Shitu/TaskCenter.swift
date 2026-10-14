@@ -185,7 +185,6 @@ enum TaskStoreError: LocalizedError {
 
 @MainActor final class TaskCenterController {
     let model: TaskCenterModel
-    private var panel: NSPanel?
     private var island: TaskIslandController?
     private var observers: [NSObjectProtocol] = []
     private var subscriptions: Set<AnyCancellable> = []
@@ -194,7 +193,7 @@ enum TaskStoreError: LocalizedError {
     }
     func start() {
         guard island == nil else { return }
-        island = TaskIslandController(model: model) { [weak self] in self?.showTasks() }
+        island = TaskIslandController(model: model, launcher: QuickLauncherController.shared)
         for name in [Notification.Name.EKEventStoreChanged, NSApplication.didBecomeActiveNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.model.refresh() }
@@ -209,25 +208,29 @@ enum TaskStoreError: LocalizedError {
         model.requestComposer(text: text); showTasks()
     }
     func showTasks() {
-        if panel == nil {
-            let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 540, height: 600), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            window.title = "SnapNest · 任务"; window.isReleasedWhenClosed = false; window.minSize = NSSize(width: 460, height: 440)
-            window.contentView = NSHostingView(rootView: TaskCenterView(model: model)); window.center(); panel = window
-        }
-        NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true); panel?.makeKeyAndOrderFront(nil)
+        if island == nil { start() }
+        island?.expand(.tasks)
         Task { await model.refresh() }
     }
-    func setCaptureActive(_ active: Bool) { island?.setCaptureActive(active); if active { panel?.orderOut(nil) } }
+    func setCaptureActive(_ active: Bool) { island?.setCaptureActive(active) }
+
 }
 
-private struct TaskCenterView: View {
+struct TaskCenterView: View {
     @ObservedObject var model: TaskCenterModel
     @State private var sourceID = ""
     var body: some View {
+        Group {
+            if let draft = model.draft {
+                TaskDraftView(model: model, original: draft).id(draft.sessionID)
+            } else { content }
+        }
+    }
+    private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack { Text("任务").font(.largeTitle.bold()); Spacer(); Button("刷新") { Task { await model.refresh() } } }
-            Text("任务保存在系统提醒事项中。跨设备同步需选择 iCloud 账户，并在各设备开启同一 Apple 账户的提醒事项同步；其他账户不一定同步到 iPhone。")
-                .font(.caption).foregroundStyle(.secondary)
+            HStack { Text("我的待办").font(.title2.bold()); Spacer(); Button("刷新") { Task { await model.refresh() } } }
+            if !model.connected || model.boundList == nil { Text("任务保存在系统提醒事项中。跨设备同步需选择 iCloud 账户，并在各设备开启同一 Apple 账户的提醒事项同步；其他账户不一定同步到 iPhone。")
+                .font(.caption).foregroundStyle(.secondary) }
             if let notice = model.composerNotice { Text(notice).foregroundStyle(.orange).font(.callout) }
             if let error = model.error { Text(error).foregroundStyle(.red).font(.callout).textSelection(.enabled) }
             if let pending = model.pendingDraft {
@@ -257,8 +260,8 @@ private struct TaskCenterView: View {
                             if let due = item.due { Text(due, style: .date).font(.caption).foregroundStyle(.secondary) }
                         }
                         Spacer(); Button("编辑") { model.draft = item }
-                    }.padding(.vertical, 3)
-                }
+                    }.padding(.vertical, 3).listRowBackground(Color.white.opacity(0.035))
+                }.scrollContentBackground(.hidden)
             } else {
                 Text("选择专用 SnapNest 列表，或在指定账户创建新列表。")
                 ForEach(model.lists) { list in
@@ -275,7 +278,7 @@ private struct TaskCenterView: View {
             Toggle("显示屏幕顶部任务计数", isOn: $model.islandEnabled)
         }.padding(22).frame(minWidth: 420, minHeight: 400)
             .disabled(model.busy)
-            .sheet(item: $model.draft) { draft in TaskDraftView(model: model, original: draft).id(draft.sessionID) }
+
     }
 }
 private struct TaskDraftView: View {
@@ -340,7 +343,13 @@ private struct TaskDraftView: View {
         let tasks = renderView(TaskCenterView(model: model), name: "tasks-list", directory: directory, size: NSSize(width: 560, height: 620))
         let composer = renderView(TaskDraftView(model: model, original: TaskEntry(id: "", title: "把选中的文字变为下一项任务", due: Date(), completed: false)), name: "tasks-composer", directory: directory, size: NSSize(width: 480, height: 360))
         let island = renderView(TaskIslandView(model: model, open: {}), name: "tasks-island", directory: directory, size: NSSize(width: 188, height: 56))
-        return onboarding && tasks && composer && island
+        let launcher = QuickLauncherController()
+        let controller = TaskIslandController(model: model, launcher: launcher, preview: true)
+        controller.expanded = true; controller.page = .tasks
+        let unifiedTasks = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-tasks", directory: directory, size: NSSize(width: 600, height: 570))
+        controller.page = .launcher
+        let unifiedLauncher = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "unified-launcher", directory: directory, size: NSSize(width: 600, height: 570))
+        return onboarding && tasks && composer && island && unifiedTasks && unifiedLauncher
     }
     private static func renderView<V: View>(_ root: V, name: String, directory: String, size: NSSize) -> Bool {
         let view = NSHostingView(rootView: root.frame(width: size.width, height: size.height).background(Color(nsColor: .windowBackgroundColor)))

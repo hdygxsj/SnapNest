@@ -21,7 +21,9 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
     @Published fileprivate var scanning = false
     @Published fileprivate var addingURL = false
     @Published fileprivate var focusGeneration = 0
-    private var panel: LauncherPanel?
+    private weak var panel: NSPanel?
+    var presentationRequested: (() -> Void)?
+    var dismissalRequested: (() -> Void)?
     private var keyMonitor: Any?
     private var launchGeneration = 0
     private let favoritesKey = "snapnest.v2.launcher.favorites"
@@ -43,39 +45,21 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
             .filter { LauncherSearch.matches(title: $0.title, query: query) }
     }
 
-    func show() {
+    func show() { presentationRequested?() }
+
+    func activate(in window: NSPanel) {
         launchGeneration += 1
-        if panel == nil {
-            let window = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 470),
-                                       styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-            window.title = "SnapNest · 快速启动"
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.isReleasedWhenClosed = false
-            window.level = .floating
-            window.hidesOnDeactivate = false
-            window.isMovableByWindowBackground = true
-            window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-            window.delegate = self
-            window.contentView = NSHostingView(rootView: QuickLauncherView(model: self))
-            panel = window
-        }
-        query = ""
+        panel = window
         selectedID = results.first?.id
-        panel?.center()
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        panel?.makeKeyAndOrderFront(nil)
         focusGeneration += 1
         installKeys()
         scanApplications()
     }
-
-    func hide() {
+    func deactivate() {
         launchGeneration += 1
-        panel?.orderOut(nil)
         removeKeys()
     }
+    func hide() { deactivate(); dismissalRequested?() }
 
     func windowWillClose(_ notification: Notification) {
         launchGeneration += 1
@@ -191,12 +175,7 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
     }
 }
 
-private final class LauncherPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
-private struct QuickLauncherView: View {
+struct QuickLauncherView: View {
     @ObservedObject var model: QuickLauncherController
     @FocusState private var searchFocused: Bool
     var body: some View {

@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKey = HotKey()
     private let launcherKey = HotKey()
     private let taskKey = HotKey()
-    private let launcher = QuickLauncherController()
+    private let launcher = QuickLauncherController.shared
     private let taskCenter = TaskCenterController()
     private let selectedText = SelectedTextCapture()
     private var launcherShortcutAvailable = false
