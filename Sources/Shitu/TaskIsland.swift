@@ -5,7 +5,7 @@ import Combine
 
 enum IslandPage { case launcher, tasks, capture, office, settings }
 
-@MainActor final class TaskIslandController: ObservableObject {
+@MainActor final class TaskIslandController: NSObject, ObservableObject, NSWindowDelegate {
     @Published var expanded = false
     @Published var page: IslandPage = .launcher
     let captureContent: AnyView?
@@ -18,12 +18,19 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
     private var suppressed = false
     private var subscriptions: Set<AnyCancellable> = []
     private var screenObserver: NSObjectProtocol?
-    private var outsideMonitor: Any?
+    private var presentingWorkspace = false
+    private var changingFrame = false
+    private let defaults: UserDefaults
+    private var workspaceFrame: NSRect?
+    private static let frameKey = "qingyu.workspace.frame.v1"
     private var escapeMonitor: Any?
-    init(model: TaskCenterModel, launcher: QuickLauncherController, captureContent: AnyView? = nil, settingsContent: AnyView? = nil, officeContent: AnyView? = nil, preview: Bool = false) {
-        self.model = model; self.launcher = launcher
+    init(model: TaskCenterModel, launcher: QuickLauncherController, captureContent: AnyView? = nil, settingsContent: AnyView? = nil, officeContent: AnyView? = nil, preview: Bool = false, defaults: UserDefaults = .standard) {
+        self.model = model; self.launcher = launcher; self.defaults = defaults
+        if let value = defaults.string(forKey: Self.frameKey) { workspaceFrame = NSRectFromString(value) }
         self.captureContent = captureContent; self.settingsContent = settingsContent; self.officeContent = officeContent
+        super.init()
         if preview { return }
+        panel.delegate = self
         panel.level = .floating; panel.isOpaque = false; panel.backgroundColor = .clear
         panel.hasShadow = true; panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -32,19 +39,9 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
         launcher.dismissalRequested = { [weak self] in self?.collapse() }
         model.objectWillChange.sink { [weak self] _ in Task { @MainActor in self?.update() } }.store(in: &subscriptions)
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.update() }
+            Task { @MainActor in self?.update(constrain: true) }
         }
-        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.panel.attachedSheet == nil, !self.modalActivity else { return }
-                self.collapse()
-            }
-        }
-        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if event.type != .keyDown {
-                if let self, event.window !== self.panel, self.panel.attachedSheet == nil, !self.modalActivity { self.collapse() }
-                return event
-            }
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.panel, event.keyCode == 53,
                   self.panel.attachedSheet == nil, !self.modalActivity else { return event }
             if let editor = self.panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
@@ -55,16 +52,19 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
     func expand(_ page: IslandPage) {
         guard !suppressed else { return }
         launcher.deactivate()
-        self.page = page; expanded = true; update()
+        self.page = page; expanded = true; update(constrain: true)
         NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true)
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
         if page == .launcher { launcher.activate(in: panel) }
     }
     func collapse() {
         guard expanded, panel.attachedSheet == nil, !modalActivity else { return }
+        saveWorkspaceFrame()
         launcher.deactivate(); expanded = false; panel.resignKey(); update()
     }
     func setCaptureActive(_ active: Bool) {
+        if active { saveWorkspaceFrame() }
         suppressed = active
         if active {
             launcher.deactivate(); expanded = false
@@ -72,16 +72,92 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
         }
         update()
     }
-    private func update() {
-        guard !suppressed, expanded || model.islandEnabled, let screen = NSScreen.screens.first else { panel.orderOut(nil); return }
-        let frame = screen.visibleFrame
-        let size = expanded ? NSSize(width: 800, height: 600) : NSSize(width: 192, height: 38)
-        panel.setFrame(NSRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 8, width: size.width, height: size.height), display: true)
-        panel.orderFrontRegardless()
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        collapse()
+        return false
     }
+    func windowDidMove(_ notification: Notification) { saveWorkspaceFrame() }
+    func windowDidResize(_ notification: Notification) { saveWorkspaceFrame() }
+    private func saveWorkspaceFrame() {
+        guard presentingWorkspace, !changingFrame, !panel.isMiniaturized else { return }
+        workspaceFrame = panel.frame
+        defaults.set(NSStringFromRect(panel.frame), forKey: Self.frameKey)
+    }
+    private func update(constrain: Bool = false) {
+        guard !suppressed, expanded || model.islandEnabled, let screen = NSScreen.screens.first else { panel.orderOut(nil); return }
+        changingFrame = true
+        defer { changingFrame = false }
+        if expanded {
+            if !presentingWorkspace {
+                panel.orderOut(nil)
+                panel.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+                panel.title = "轻屿"
+                panel.titleVisibility = .visible
+                panel.isMovable = true
+                panel.isMovableByWindowBackground = false
+                panel.level = .normal
+                panel.isFloatingPanel = false
+                panel.collectionBehavior = [.fullScreenPrimary]
+                panel.minSize = NSSize(width: min(800, screen.visibleFrame.width), height: min(622, screen.visibleFrame.height))
+                presentingWorkspace = true
+                if let frame = WorkspacePlacement.frame(saved: workspaceFrame, screens: NSScreen.screens.map(\.visibleFrame)) { panel.setFrame(frame, display: true) }
+            } else if constrain, let frame = WorkspacePlacement.frame(saved: panel.frame, screens: NSScreen.screens.map(\.visibleFrame)) {
+                panel.setFrame(frame, display: true)
+            }
+        } else {
+            if presentingWorkspace { panel.orderOut(nil) }
+            panel.styleMask = [.borderless, .nonactivatingPanel]
+            panel.minSize = .zero
+            panel.level = .floating; panel.isFloatingPanel = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            presentingWorkspace = false
+            let frame = screen.visibleFrame
+            panel.setFrame(NSRect(x: frame.midX - 96, y: frame.maxY - 46, width: 192, height: 38), display: true)
+        }
+        if !panel.isVisible && !panel.isMiniaturized { panel.orderFront(nil) }
+    }
+    static func verifyLifecycle(model: TaskCenterModel, defaults: UserDefaults) -> Bool {
+        let controller = TaskIslandController(model: model, launcher: QuickLauncherController(), defaults: defaults)
+        defer { controller.panel.orderOut(nil) }
+        controller.expand(.capture)
+        guard controller.panel.styleMask.contains(.resizable), controller.panel.level == .normal else { return false }
+        let original = controller.panel.frame
+        let changed = original.offsetBy(dx: 25, dy: -20)
+        controller.panel.setFrame(changed, display: true)
+        controller.saveWorkspaceFrame()
+        controller.expand(.office)
+        let expected = WorkspacePlacement.frame(saved: changed, screens: NSScreen.screens.map(\.visibleFrame))!
+        guard controller.panel.frame == expected else { return false }
+        controller.collapse()
+        guard !controller.panel.isVisible else { return false }
+        controller.expand(.capture)
+        guard controller.panel.frame == expected else { return false }
+        controller.panel.performClose(nil)
+        guard !controller.panel.isVisible, !controller.expanded else { return false }
+        model.islandEnabled = true
+        controller.update()
+        guard controller.panel.frame.width == 192, controller.panel.level == .floating else { return false }
+        controller.expand(.office)
+        guard controller.panel.frame == expected else { return false }
+        controller.setCaptureActive(true)
+        guard !controller.panel.isVisible else { return false }
+        controller.setCaptureActive(false)
+        controller.expand(.capture)
+        guard controller.panel.frame == expected else { return false }
+        let restored = TaskIslandController(model: model, launcher: QuickLauncherController(), defaults: defaults)
+        defer { restored.panel.orderOut(nil) }
+        restored.expand(.capture)
+        return restored.panel.frame == expected
+    }
+    deinit {
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+    }
+
 }
 private final class IslandPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { styleMask.contains(.titled) }
 }
 
 struct UnifiedIslandView: View {

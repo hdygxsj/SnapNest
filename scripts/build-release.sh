@@ -7,6 +7,11 @@ if [ "$(/usr/libexec/PlistBuddy -c 'Print SnapNestPrivateEdition' Resources/Info
 else
     RELEASE_DIR="$PWD/dist/releases/v$VERSION"
 fi
+# Optional build suffix keeps trial bundles separate from an already running release.
+if [ -n "${SHITU_BUILD_SUFFIX:-}" ]; then
+    [[ "$SHITU_BUILD_SUFFIX" =~ ^[a-zA-Z0-9-]+$ ]] || { echo "Invalid build suffix" >&2; exit 2; }
+    RELEASE_DIR="$RELEASE_DIR-$SHITU_BUILD_SUFFIX"
+fi
 APP="$RELEASE_DIR/轻屿.app"
 if [ -e "$APP" ]; then
     printf '%s\n' 'Release bundle already exists; use a new version or move the previous bundle before rebuilding.' >&2

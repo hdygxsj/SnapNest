@@ -6,6 +6,10 @@ import Carbon
 @main
 struct ShituApp {
     @MainActor static func main() {
+        if CommandLine.arguments.contains("--verify-workspace") {
+            _ = NSApplication.shared
+            exit(WorkspaceVerification.run() ? 0 : 1)
+        }
         if CommandLine.arguments.contains("--verify-office") {
             _ = NSApplication.shared
             exit(OfficeVerification.run() ? 0 : 1)
