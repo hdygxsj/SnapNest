@@ -348,7 +348,7 @@ private struct TaskDraftView: View {
         let tasks = renderView(TaskCenterView(model: model), name: "tasks-list", directory: directory, size: NSSize(width: 560, height: 620))
         let composer = renderView(TaskDraftView(model: model, original: TaskEntry(id: "", title: "把选中的文字变为下一项任务", due: Date(), completed: false)), name: "tasks-composer", directory: directory, size: NSSize(width: 480, height: 360))
         let island = renderView(TaskIslandView(model: model, open: {}), name: "tasks-island", directory: directory, size: NSSize(width: 188, height: 56))
-        let launcher = QuickLauncherController()
+        let launcher = QuickLauncherController.appearancePreview()
         let captureModel = AppModel()
         captureModel.items = ["tasks-list", "tasks-composer", "tasks-onboarding"].enumerated().map { index, name in
             CaptureItem(id: UUID(), url: URL(fileURLWithPath: directory).appendingPathComponent(name + ".png"), date: Date().addingTimeInterval(Double(-index * 300)), kind: "区域截图")

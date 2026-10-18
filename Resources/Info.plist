@@ -8,7 +8,7 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>2.0.0</string>
-<key>CFBundleVersion</key><string>13</string>
+<key>CFBundleVersion</key><string>14</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>轻屿需要录屏权限以截图、拼接长截图及录制所选屏幕区域。所有内容只保存在本机。</string>

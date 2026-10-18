@@ -59,6 +59,19 @@ final class QuickLauncherController: NSObject, ObservableObject, NSWindowDelegat
             .filter { LauncherSearch.matches(title: $0.title, query: query) }
     }
 
+    static func appearancePreview() -> QuickLauncherController {
+        let model = QuickLauncherController()
+        model.applications = [
+            LauncherItem(url: URL(fileURLWithPath: "/System/Applications/Notes.app"), title: "备忘录"),
+            LauncherItem(url: URL(fileURLWithPath: "/System/Applications/Calendar.app"), title: "日历"),
+            LauncherItem(url: URL(fileURLWithPath: "/System/Applications/Mail.app"), title: "邮件"),
+            LauncherItem(url: URL(fileURLWithPath: "/System/Applications/Reminders.app"), title: "提醒事项")
+        ]
+        model.favorites = Array(model.applications.prefix(3))
+        model.selectedID = model.applications.first?.id
+        return model
+    }
+
     func show() { presentationRequested?() }
 
     func activate(in window: NSPanel) {
@@ -204,66 +217,145 @@ struct QuickLauncherView: View {
             else { launcherContent }
         }
     }
+    @State private var hoveredID: String?
+    private var accent: Color { WorkspaceTheme.accent(scheme) }
+    private var searching: Bool { !model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var launcherContent: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                TextField("搜索应用与收藏 · 支持拼音", text: $model.query)
-                    .textFieldStyle(.plain).font(.title3).focused($searchFocused)
-                Text("⌘ ⇧ Space").font(.caption).foregroundStyle(.secondary)
-            }.padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-            HStack {
-                Text("快速启动").font(.headline)
-                if model.scanning { ProgressView().controlSize(.small) }
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("快捷启动").font(.system(size: 23, weight: .semibold))
+                    Text("应用、文件夹与网址，随手打开").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("收藏应用/文件夹", action: model.addFileFavorite)
-                Button("收藏网址") { model.addingURL = true }
+                Menu {
+                    Button("收藏应用或文件夹", action: model.addFileFavorite)
+                    Button("收藏网址") { model.addingURL = true }
+                } label: {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .medium))
+                        .frame(width: 32, height: 32)
+                }.menuStyle(.borderlessButton).fixedSize().help("添加收藏")
+                    .accessibilityLabel("添加收藏")
             }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 3) {
-                        ForEach(model.results) { item in
-                            HStack(spacing: 10) {
-                                Group {
-                                    if item.url.isFileURL { Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path)).resizable().scaledToFit() }
-                                    else { Image(systemName: "globe").resizable().scaledToFit().padding(5).foregroundStyle(WorkspaceTheme.accent(scheme)) }
-                                }.frame(width: 34, height: 34)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.title).lineLimit(1)
-                                    Text(item.isWeb ? (item.url.host ?? item.title) : (item.url.pathExtension.lowercased() == "app" ? "应用程序" : "文件夹")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                Spacer()
-                                if item.url.isFileURL && item.url.pathExtension.lowercased() == "app" {
-                                    Button { model.editingShortcut = item } label: {
-                                        Text(shortcuts.bindings.first(where: { $0.id == item.id })?.chord.label ?? "设置快捷键").font(.caption.monospaced())
-                                    }.buttonStyle(.bordered).help(shortcuts.failures[item.id] ?? "设置此应用的全局启动快捷键")
-                                    if shortcuts.failures[item.id] != nil { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
-                                }
-                                Button { model.toggleFavorite(item) } label: {
-                                    Image(systemName: model.favorites.contains(where: { $0.id == item.id }) ? "star.fill" : "star")
-                                }.buttonStyle(.borderless).help("添加或移除收藏")
-                            }.padding(10)
-                                .background(model.selectedID == item.id ? WorkspaceTheme.accent(scheme).opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) { model.open(item) }
-                                .onTapGesture { model.selectedID = item.id }
-                                .id(item.id)
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass").font(.system(size: 18)).foregroundStyle(accent)
+                TextField("搜索应用或收藏", text: $model.query)
+                    .textFieldStyle(.plain).font(.system(size: 16)).focused($searchFocused)
+                    .accessibilityLabel("搜索应用或收藏，支持拼音")
+                if !model.query.isEmpty {
+                    Button { model.query = ""; searchFocused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .help("清空搜索").accessibilityLabel("清空搜索")
+                }
+                Text("⌘ ⇧ Space").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+            }.padding(.horizontal, 16).frame(height: 52)
+                .background(scheme == .dark ? Color.white.opacity(0.045) : Color.white, in: RoundedRectangle(cornerRadius: 13))
+                .overlay(RoundedRectangle(cornerRadius: 13).stroke(searchFocused ? accent.opacity(0.45) : Color.primary.opacity(0.09), lineWidth: 1))
+            if !searching && !model.favorites.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    sectionLabel("收藏", count: model.favorites.count)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(model.favorites) { item in
+                                Button { model.open(item) } label: {
+                                    VStack(spacing: 9) {
+                                        appIcon(item, size: 36)
+                                        Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                                    }.frame(width: 94, height: 86)
+                                        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                                }.help("打开 " + item.title)
+                                    .contextMenu {
+                                        if item.url.isFileURL && item.url.pathExtension.lowercased() == "app" {
+                                            Button("设置快捷键") { model.editingShortcut = item }
+                                        }
+                                        Button("移除收藏") { model.toggleFavorite(item) }
+                                    }
+                            }
                         }
-                        if model.results.isEmpty { Text(model.scanning ? "正在扫描已安装应用…" : "没有匹配的应用或收藏").foregroundStyle(.secondary).padding(30) }
-                    }
-                }.onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
+                    }.frame(height: 88)
+                }
             }
+            VStack(spacing: 8) {
+                sectionLabel(searching ? "搜索结果" : "全部应用与收藏", count: model.results.count)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(model.results) { item in
+                                resultRow(item).id(item.id)
+                            }
+                            if model.results.isEmpty {
+                                VStack(spacing: 10) {
+                                    Image(systemName: model.scanning ? "app.dashed" : "magnifyingglass").font(.system(size: 28)).foregroundStyle(.tertiary)
+                                    Text(model.scanning ? "正在查找已安装应用…" : "没有找到匹配项").font(.system(size: 14, weight: .medium))
+                                    Text("支持应用名称和拼音搜索").font(.system(size: 12)).foregroundStyle(.secondary)
+                                }.frame(maxWidth: .infinity).padding(.vertical, 36)
+                            }
+                        }
+                    }.onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
+                }
+            }.frame(maxHeight: .infinity)
             if let error = shortcuts.error { Text(error).font(.caption).foregroundStyle(.red) }
-            if let error = model.error { Text(error).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading) }
-            HStack {
-                Text("↑ ↓ 选择    ↩ 打开    Esc 关闭").font(.caption).foregroundStyle(.secondary)
+            if let error = model.error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack(spacing: 14) {
+                Label("选择", systemImage: "arrow.up.arrow.down")
+                Label("打开", systemImage: "return")
                 Spacer()
-                Button("打开", action: model.openSelection).disabled(model.results.isEmpty)
-            }
-        }.padding(26).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text("双击列表打开 · 点击键盘设置快捷键")
+            }.font(.system(size: 11)).foregroundStyle(.secondary)
+        }.buttonStyle(.plain).padding(24).frame(maxWidth: 800).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onAppear { searchFocused = true }
             .onChange(of: model.focusGeneration) { _, _ in searchFocused = true }
             .onChange(of: model.query) { _, _ in model.resetSelection() }
+    }
+    private func sectionLabel(_ title: String, count: Int) -> some View {
+        HStack(spacing: 7) {
+            Text(title).font(.system(size: 12, weight: .semibold))
+            Text("\(count)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.tertiary)
+            Spacer()
+            if model.scanning { ProgressView().controlSize(.mini) }
+        }.foregroundStyle(.secondary)
+    }
+    private func appIcon(_ item: LauncherItem, size: CGFloat) -> some View {
+        Group {
+            if item.url.isFileURL { Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path)).resizable().scaledToFit() }
+            else { Image(systemName: "globe").resizable().scaledToFit().padding(5).foregroundStyle(accent) }
+        }.frame(width: size, height: size)
+    }
+    private func resultRow(_ item: LauncherItem) -> some View {
+        let selected = model.selectedID == item.id
+        let active = selected || hoveredID == item.id
+        let binding = shortcuts.bindings.first(where: { $0.id == item.id })
+        let favorite = model.favorites.contains(where: { $0.id == item.id })
+        return HStack(spacing: 12) {
+            appIcon(item, size: 32)
+            Text(item.title).font(.system(size: 13, weight: selected ? .medium : .regular)).lineLimit(1)
+            if item.isWeb { Text(item.url.host ?? "").font(.system(size: 11)).foregroundStyle(.tertiary).lineLimit(1) }
+            Spacer(minLength: 12)
+            if item.url.isFileURL && item.url.pathExtension.lowercased() == "app" {
+                Button { model.editingShortcut = item } label: {
+                    Group {
+                        if let binding { Text(binding.chord.label).font(.system(size: 11, design: .monospaced)) }
+                        else { Image(systemName: "keyboard").font(.system(size: 14)) }
+                    }.padding(.horizontal, 9).frame(height: 26)
+                        .foregroundStyle(active ? accent : .secondary)
+                        .background(Color.primary.opacity(active ? 0.055 : 0.025), in: RoundedRectangle(cornerRadius: 6))
+                }.help(shortcuts.failures[item.id] ?? "设置此应用的全局启动快捷键")
+                    .accessibilityLabel("设置 " + item.title + " 的快捷键")
+                    .opacity(binding != nil || active ? 1 : 0.3)
+                if shortcuts.failures[item.id] != nil { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+            }
+            Button { model.toggleFavorite(item) } label: {
+                Image(systemName: favorite ? "star.fill" : "star")
+                    .foregroundStyle(favorite ? accent : Color.secondary.opacity(active ? 1 : 0.35))
+                    .frame(width: 26, height: 28)
+            }.help(favorite ? "移除收藏" : "添加收藏")
+                .accessibilityLabel((favorite ? "移除收藏 " : "收藏 ") + item.title)
+        }.padding(.horizontal, 12).frame(height: 50)
+            .background(selected ? accent.opacity(scheme == .dark ? 0.19 : 0.08) : Color.primary.opacity(hoveredID == item.id ? 0.035 : 0), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? accent.opacity(0.15) : .clear, lineWidth: 1))
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { model.open(item) }
+            .onTapGesture { model.selectedID = item.id }
+            .onHover { hovering in hoveredID = hovering ? item.id : nil }
     }
 }
 

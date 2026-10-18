@@ -134,7 +134,7 @@ struct AppShortcutEditor: View {
                 Button("取消", action: close)
                 Button("保存") { if store.save(url: url, title: title, chord: AppShortcutChord(keyCode: keyCode, modifiers: modifiers)) { close() } }.buttonStyle(.borderedProminent)
             }
-        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }.padding(24).frame(maxWidth: 800).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onAppear {
                 store.error = nil
                 if let binding = store.bindings.first(where: { $0.id == url.absoluteString }) { keyCode = binding.chord.keyCode; modifiers = binding.chord.modifiers }
