@@ -76,12 +76,9 @@ func checkGIFExport() async throws {
     let hdProperties = CGImageSourceCopyPropertiesAtIndex(hdSource, 0, nil)! as NSDictionary
     let hdFrame = hdProperties[kCGImagePropertyGIFDictionary] as! NSDictionary
     XCTAssertEqual((hdFrame[kCGImagePropertyGIFUnclampedDelayTime] as! NSNumber).doubleValue, 0.05)
-    XCTAssertEqual(ExportQuality.resolved(pro: false, prefersHD: true), .standard)
-    XCTAssertEqual(ExportQuality.resolved(pro: true, prefersHD: false), .standard)
-    XCTAssertEqual(ExportQuality.resolved(pro: true, prefersHD: true), .highDefinition)
     XCTAssertEqual(ExportQuality.standard.pngScale(nativeScale: 2), 1)
     XCTAssertEqual(ExportQuality.highDefinition.pngScale(nativeScale: 2), 2)
-    print("HD quality verified: 20 fps timing, no upscaling, entitlement gate and Retina PNG scale")
+    print("HD quality verified: 20 fps timing, no upscaling and Retina PNG scale")
 }
 
 private func checkRecordingAudio(video: URL, directory: URL) async throws {

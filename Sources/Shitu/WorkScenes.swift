@@ -13,18 +13,17 @@ struct WorkScene: Codable, Identifiable, Equatable {
     @Published var message: String?
     @Published private(set) var opening = false
     private let file: URL
-    private let canUse: @MainActor () -> Bool
     let access = OfficeAccess()
     private var loadFailed = false
     var current: WorkScene? { scenes.first { $0.id == selectedID } }
-    init(root: URL = OfficeDisk.root, canUse: @escaping @MainActor () -> Bool = { ProStore.shared.isPro }) {
-        file = root.appendingPathComponent("scenes.json"); self.canUse = canUse
+    init(root: URL = OfficeDisk.root) {
+        file = root.appendingPathComponent("scenes.json")
         do { scenes = try OfficeDisk.load([WorkScene].self, from: file, empty: []); selectedID = scenes.first?.id }
         catch { loadFailed = true; message = "工作现场读取失败，原数据未覆盖：\(error.localizedDescription)" }
     }
     private func allowed() -> Bool {
         guard !loadFailed else { return false }
-        guard canUse() else { message = "此功能需要轻屿 Pro。"; return false }; return true
+        return true
     }
     private func persist(_ next: [WorkScene]) -> Bool {
         do { try OfficeDisk.save(next, to: file); scenes = next; return true }
@@ -73,7 +72,6 @@ struct WorkScene: Codable, Identifiable, Equatable {
         Task {
             var failures: [String] = []; var count = 0
             for reference in scene.targets {
-                guard canUse() else { failures.append("Pro 权益已变更，已停止打开剩余目标。"); break }
                 do {
                     let url = try access.resolve(reference)
                     if url.isFileURL && url.pathExtension.lowercased() == "app" {

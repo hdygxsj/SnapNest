@@ -76,16 +76,15 @@ enum OfficeError: LocalizedError {
     @Published var message: String?
     let access = OfficeAccess()
     private let file: URL
-    private let canUse: @MainActor () -> Bool
     private var loadFailed = false
-    init(root: URL = OfficeDisk.root, canUse: @escaping @MainActor () -> Bool = { ProStore.shared.isPro }) {
-        file = root.appendingPathComponent("shelf.json"); self.canUse = canUse
+    init(root: URL = OfficeDisk.root) {
+        file = root.appendingPathComponent("shelf.json")
         do { items = try OfficeDisk.load([OfficeReference].self, from: file, empty: []) }
         catch { loadFailed = true; message = "暂存篮读取失败，未覆盖原数据：\(error.localizedDescription)" }
     }
     private func allowed() -> Bool {
         guard !loadFailed else { message = "请先恢复暂存篮数据文件，当前仅供查看。"; return false }
-        guard canUse() else { message = "此功能需要轻屿 Pro。"; return false }; return true
+        return true
     }
     func add(_ urls: [URL]) {
         guard allowed() else { return }

@@ -48,7 +48,7 @@ final class AppModel: ObservableObject {
     @Published var pixelHeight = 0
     @Published private(set) var lastCapture: SavedCaptureRegion?
     var canRepeatCapture: Bool { !busy && lastCapture != nil }
-    var showPro: (() -> Void)?
+    var showQualitySettings: (() -> Void)?
     private var officeCapture: ((CGImage?) -> Void)?
     func captureForTutorial(_ completion: @escaping (CGImage?) -> Void) {
         guard !busy, !checkingPermission else { completion(nil); return }
@@ -193,7 +193,7 @@ final class AppModel: ObservableObject {
         }
     }
     private func launch(_ mode: CaptureMode, region: CaptureRegion) {
-        let quality = ExportQuality.resolved(pro: ProStore.shared.isPro, prefersHD: ProStore.shared.prefersHD)
+        let quality = CaptureQualityPreferences.shared.quality
         phase = .capturing
         captureTask = Task {
             do {

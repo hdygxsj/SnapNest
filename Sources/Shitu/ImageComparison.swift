@@ -66,10 +66,7 @@ enum ComparisonPixels {
     @Published var threshold = 20.0
     @Published private(set) var analyzing = false
     private var generation = 0
-    private let canUse: @MainActor () -> Bool
-    init(canUse: @escaping @MainActor () -> Bool = { ProStore.shared.isPro }) { self.canUse = canUse }
     func load(_ url: URL, first: Bool) {
-        guard canUse() else { message = "此功能需要轻屿 Pro。"; return }
         do {
             let image = try ComparisonImage.load(url)
             if first { before = image } else { after = image }
@@ -82,7 +79,7 @@ enum ComparisonPixels {
         else if picker.runModal() == .OK, let url = picker.url { load(url, first: first) }
     }
     func analyze() {
-        guard canUse(), let before, let after else { return }
+        guard let before, let after else { return }
         guard before.sourceWidth == after.sourceWidth, before.sourceHeight == after.sourceHeight else { message = "原图尺寸不同，不能直接分析像素差异。左右对照仍可使用。"; return }
         generation += 1; let token = generation; let threshold = Int(threshold)
         difference = nil; ratio = nil; analyzing = true; message = nil
@@ -98,7 +95,6 @@ enum ComparisonPixels {
     }
     func invalidateAnalysis() { generation += 1; difference = nil; ratio = nil; analyzing = false }
     func report() throws -> Data {
-        guard canUse() else { throw OfficeError.message("导出需要轻屿 Pro。") }
         guard let before, let after else { throw OfficeError.message("请先选择两张图片。") }
         let noteBounds = ("验收意见\n" + note as NSString).boundingRect(with: NSSize(width: 740, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: NSFont.systemFont(ofSize: 20)])
         guard noteBounds.height <= 400 else { throw OfficeError.message("验收意见过长，请减少文字或换行后导出。") }
@@ -129,7 +125,6 @@ enum ComparisonPixels {
         return data
     }
     func export() {
-        guard canUse() else { message = "导出需要轻屿 Pro。"; return }
         let picker = NSSavePanel(); picker.allowedContentTypes = [.png]; picker.nameFieldStringValue = "轻屿-截图对比.png"
         let finish: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = picker.url else { return }

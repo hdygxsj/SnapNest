@@ -6,6 +6,9 @@ import Carbon
 @main
 struct ShituApp {
     @MainActor static func main() {
+        if CommandLine.arguments.contains("--verify-quality") {
+            exit(CaptureQualityVerification.run() ? 0 : 1)
+        }
         if CommandLine.arguments.contains("--verify-workspace") {
             _ = NSApplication.shared
             exit(WorkspaceVerification.run() ? 0 : 1)
@@ -82,7 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastShelfReveal = Date.distantPast
     func applicationDidFinishLaunching(_ notification: Notification) {
         WorkspaceTheme.shared.apply()
-        ProStore.shared.start()
         model.presentEditor = { [weak self] image, kind, region in
             guard let self else { return }
             self.editor.show(image: image, region: region, automaticallyCopy: self.model.copyAfterCapture, save: { [weak self] image in
@@ -101,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectedText.start()
         taskCenter.captureContent = AnyView(CaptureWorkspace(model: model))
         taskCenter.settingsContent = AnyView(WorkspaceSettings(model: model, selectedText: selectedText))
-        taskCenter.officeContent = AnyView(OfficeWorkspace(model: office, upgrade: { [weak self] in self?.taskCenter.showPage(.settings) }))
+        taskCenter.officeContent = AnyView(OfficeWorkspace(model: office))
         office.tutorials.panelActivity = { [weak self] in self?.taskCenter.setModalActivity($0) }
         office.tutorials.requestCapture = { [weak self] in
             guard let self else { return }
@@ -118,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         taskCenter.start()
         fileDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { [weak self] _ in
             Task { @MainActor in
-                guard let self, ProStore.shared.isPro, !self.model.busy,
+                guard let self, !self.model.busy,
                       Date().timeIntervalSince(self.lastShelfReveal) > 1,
                       NSPasteboard(name: .drag).types?.contains(.fileURL) == true else { return }
                 let point = NSEvent.mouseLocation
@@ -138,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         launcher.canLaunchApplication = { [weak self] in self?.model.busy == false }
         launcher.startApplicationShortcuts()
-        model.showPro = { [weak self] in self?.taskCenter.showPage(.settings) }
+        model.showQualitySettings = { [weak self] in self?.taskCenter.showPage(.settings) }
         model.checkForUpdates = { [weak self] in self?.checkUpdates() }
         model.showMain = { [weak self] in self?.showWindow() }
         model.hideMain = { NSApp.hide(nil) }

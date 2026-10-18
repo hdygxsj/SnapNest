@@ -24,10 +24,9 @@ struct TutorialProject: Codable, Identifiable {
     private var captureTarget: UUID?
     private var loadFailed = false
     let root: URL
-    private let canUse: @MainActor () -> Bool
     var selected: TutorialProject? { projects.first { $0.id == selectedID } }
-    init(root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("QingyuOffice/Tutorials"), canUse: @escaping @MainActor () -> Bool = { ProStore.shared.isPro }) {
-        self.root = root; self.canUse = canUse
+    init(root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("QingyuOffice/Tutorials")) {
+        self.root = root
         do {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let file = root.appendingPathComponent("projects.json")
@@ -35,10 +34,8 @@ struct TutorialProject: Codable, Identifiable {
             selectedID = projects.first?.id
         } catch { loadFailed = true; message = "无法读取教程：\(error.localizedDescription)" }
     }
-    private func requirePro() throws { if !canUse() { throw failure("此操作需要已验证的 Pro 权益。") } }
     private func failure(_ text: String) -> NSError { NSError(domain: "Tutorial", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
     private func commit(_ next: [TutorialProject]) throws {
-        try requirePro()
         guard !loadFailed else { throw failure("教程数据读取失败；请先备份并修复 projects.json 后重启，避免覆盖原数据。") }
         try JSONEncoder().encode(next).write(to: root.appendingPathComponent("projects.json"), options: .atomic)
         projects = next
@@ -76,7 +73,7 @@ struct TutorialProject: Codable, Identifiable {
         if let file { removeOwned(file) }
     }
     private func update(_ id: UUID, body: (inout TutorialProject) throws -> Void) throws {
-        try requirePro(); var next = projects
+        var next = projects
         guard let i = next.firstIndex(where: { $0.id == id }) else { throw failure("教程已不存在。") }
         try body(&next[i]); try commit(next)
     }
@@ -90,13 +87,11 @@ struct TutorialProject: Codable, Identifiable {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 4096, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary)
     }
     func importImage(_ url: URL, project: UUID, replacing: UUID? = nil) throws {
-        try requirePro()
         let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 4096, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { throw failure("无法读取所选图片。") }
         try add(image, project: project, replacing: replacing)
     }
     func add(_ image: CGImage, project: UUID, replacing: UUID? = nil) throws {
-        try requirePro()
         guard let value = projects.first(where: { $0.id == project }) else { throw failure("教程已不存在。") }
         guard replacing != nil || value.steps.count < 100 else { throw failure("每个教程最多 100 步。") }
         if let replacing, !value.steps.contains(where: { $0.id == replacing }) { throw failure("步骤已不存在。") }
@@ -116,7 +111,7 @@ struct TutorialProject: Codable, Identifiable {
         if let old { removeOwned(old) }
     }
     func beginCapture() {
-        do { try requirePro(); guard let id = selectedID, projects.contains(where: { $0.id == id }) else { throw failure("请先创建教程。") }; guard let requestCapture else { throw failure("截图入口暂不可用。") }; captureTarget = id; requestCapture() }
+        do { guard let id = selectedID, projects.contains(where: { $0.id == id }) else { throw failure("请先创建教程。") }; guard let requestCapture else { throw failure("截图入口暂不可用。") }; captureTarget = id; requestCapture() }
         catch { message = error.localizedDescription }
     }
     func cancelCapture() { captureTarget = nil }
@@ -133,7 +128,6 @@ struct TutorialProject: Codable, Identifiable {
         try (data as Data).write(to: url, options: .atomic)
     }
     func export(_ id: UUID, to url: URL, pdf: Bool) throws {
-        try requirePro()
         guard let project = projects.first(where: { $0.id == id }), !project.steps.isEmpty else { throw failure("请先添加教程步骤。") }
         let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byWordWrapping
         let titleBounds = (project.title as NSString).boundingRect(with: CGSize(width: pdf ? 539 : 1144, height: 100000), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: NSFont.boldSystemFont(ofSize: 14)])
