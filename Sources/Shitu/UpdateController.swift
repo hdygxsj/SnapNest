@@ -5,13 +5,13 @@ import CryptoKit
 
 @MainActor
 final class UpdateController: ObservableObject {
-    static let isPrivateEdition = true
+    static let isPrivateEdition = false
     static let releasesURL = URL(string: "https://github.com/hdygxsj/SnapNest/releases")!
     let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
     @Published var automaticallyCheck = UserDefaults.standard.object(forKey: "automaticallyCheckUpdates") as? Bool ?? true {
         didSet { UserDefaults.standard.set(automaticallyCheck, forKey: "automaticallyCheckUpdates") }
     }
-    @Published private(set) var status = "2.0 私有版本，尚未配置更新渠道。"
+    @Published private(set) var status = "可检查轻屿的最新公开版本。"
     @Published private(set) var busy = false
     @Published private(set) var release: AppRelease?
     @Published private(set) var downloadedURL: URL?
@@ -104,7 +104,7 @@ struct UpdateView: View {
             Text(updates.status).font(.callout).textSelection(.enabled)
             if updates.busy { ProgressView().controlSize(.small) }
             ScrollView {
-                Text(updates.release?.body ?? "当前版本不连接 GitHub / Gitee 更新渠道。请使用开发者提供的新版安装包更新。")
+                Text(updates.release?.body ?? "点击检查更新，或前往发布页查看版本和安装说明。")
                     .font(.system(size: 12)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {

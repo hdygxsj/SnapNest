@@ -8,11 +8,11 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>2.0.0</string>
-<key>CFBundleVersion</key><string>15</string>
+<key>CFBundleVersion</key><string>16</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>轻屿需要录屏权限以截图、拼接长截图及录制所选屏幕区域。所有内容只保存在本机。</string>
-<key>SnapNestPrivateEdition</key><true/>
+<key>SnapNestPrivateEdition</key><false/>
 <key>NSRemindersFullAccessUsageDescription</key><string>轻屿需要访问提醒事项，以便将所选文字添加到您指定的轻屿待办列表，显示未完成数量并标记完成。保存到 iCloud 的列表可通过系统同步到您的 iPhone。</string>
 <key>NSRemindersUsageDescription</key><string>轻屿使用系统提醒事项管理轻屿待办列表。</string>
 </dict></plist>

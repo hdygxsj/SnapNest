@@ -1,4 +1,4 @@
-// SnapNest 2.0 private additions.
+// Qingyu (SnapNest) 2.0 — MIT License.
 import AppKit
 import Carbon
 import SwiftUI

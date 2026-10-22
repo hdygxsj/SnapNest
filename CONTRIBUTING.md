@@ -20,11 +20,11 @@ swift run Shitu --verify-editor
 
 ## 本机运行
 
-先退出已运行的拾图，再执行：
+先退出已运行的轻屿，再执行：
 
 ```sh
 ./scripts/build-app.sh
-open dist/拾图.app
+open dist/轻屿.app
 ```
 
 App Bundle、构建缓存和本地签名材料不提交到 Git。屏幕捕获需要手动授予系统权限，开发版重新构建后可能需要重新授权。
@@ -32,8 +32,8 @@ App Bundle、构建缓存和本地签名材料不提交到 Git。屏幕捕获需
 示例编辑器和工具条渲染不需要捕获真实屏幕：
 
 ```sh
-# 先退出正在运行的拾图
-open dist/拾图.app --args --demo-editor
+# 先退出正在运行的轻屿
+open dist/轻屿.app --args --demo-editor
 swift run Shitu --render-toolbar "$PWD/.build/toolbar-preview.png"
 ```
 

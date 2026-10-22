@@ -153,8 +153,8 @@ struct WorkspaceSettings: View {
                 Divider()
                 SelectedTextSettings(capture: selectedText)
                 Divider()
-                Text("轻屿 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · 私有版").font(.headline)
-                Text("尚未配置私有更新渠道，更新请使用开发者提供的安装包。").font(.caption).foregroundStyle(.secondary)
+                Text("轻屿 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · 免费开源").font(.headline)
+                Link("查看最新版本与更新说明", destination: UpdateController.releasesURL).font(.caption)
             }.padding(28)
         }.onAppear { selectedText.refreshAccess(); login.refresh() }
     }

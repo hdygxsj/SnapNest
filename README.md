@@ -1,9 +1,13 @@
-# 轻屿 2.0 · 私有版
+# 轻屿 2.0 · SnapNest
 
-当前分支为本地私有开发版本。**不推送 GitHub/Gitee，不创建公开发行版，不公开安装包。**
-v1.x 已公开代码仍保留原 MIT 许可；v2 新增代码未以开源许可发布，见 [LICENSE](LICENSE)。
+免费开源的 macOS 截图与办公工具，采用 [MIT License](LICENSE)。2.0 全部源码与功能均已开放，不含付费 Pro 或内购。
 
-## 界面
+- GitHub：https://github.com/hdygxsj/SnapNest
+- Gitee：https://gitee.com/hdygxsj/SnapNest
+- 下载：https://github.com/hdygxsj/SnapNest/releases/latest
+- 系统要求：macOS 15+，支持 Apple Silicon 和 Intel。
+
+解压安装包后，将「轻屿.app」拖入「应用程序」。旧版用户请先退出拾图或轻屿，再替换安装。当前发行包为临时签名，未经过 Apple 公证；系统权限可能需要重新授权。
 
 截图、快捷启动、待办、办公与设置共用一个可拖动、可缩放并记住位置的工作窗口，支持跟随 macOS、浅色和深色外观。深浅色统一采用顶部导航，分别使用蓝白与紫灰配色，最近捕捉支持真实缩略图预览。收起后默认隐藏，不常驻屏幕顶部；可在待办页手动开启常驻计数，显示未完成数量（读取不可用时显示 —）。通过导航切换功能；编辑待办在面板内完成。Esc 或关闭按钮收起并保留未保存草稿，应用继续驻留；点击窗口外不会自动收起。截图和录屏期间隐藏。
 
@@ -56,7 +60,7 @@ swift run Shitu --verify-v2
 bash scripts/build-release.sh
 ```
 
-安装包只生成在 `dist/private/v2.0.0/`。签名可通过 `SHITU_SIGNING_IDENTITY` 配置；未配置时沿用本机临时签名，未公证，重新构建后可能需要重新授权。
-2.0 不再请求公开 GitHub 更新接口；私有更新渠道尚未配置，更新使用本地安装包。
+公开安装包生成在 `dist/releases/v2.0.0/`，文件名沿用 `SnapNest-v2.0.0-macos-universal.zip`，便于旧版更新器识别。签名可通过 `SHITU_SIGNING_IDENTITY` 配置；未配置时沿用本机临时签名，未公证，重新构建后可能需要重新授权。
+应用可检查 GitHub 最新公开版本并下载安装包，安装仍需退出后手动替换。
 
 [v1 使用说明（历史资料）](docs/v1-open-source-readme.md)

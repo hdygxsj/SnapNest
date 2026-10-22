@@ -29,6 +29,6 @@ iconutil -c icns .build/ReleaseIcon.iconset -o "$APP/Contents/Resources/AppIcon.
 codesign --force --sign "${SHITU_SIGNING_IDENTITY:--}" --identifier com.shitu.capture "$APP"
 codesign --verify --deep --strict "$APP"
 lipo "$APP/Contents/MacOS/Shitu" -verify_arch arm64 x86_64
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$RELEASE_DIR/轻屿-v$VERSION-macos-universal.zip"
-(cd "$RELEASE_DIR" && shasum -a 256 "轻屿-v$VERSION-macos-universal.zip" > SHA256SUMS.txt)
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$RELEASE_DIR/SnapNest-v$VERSION-macos-universal.zip"
+(cd "$RELEASE_DIR" && shasum -a 256 "SnapNest-v$VERSION-macos-universal.zip" > SHA256SUMS.txt)
 printf 'Built release: %s\n' "$RELEASE_DIR"
