@@ -84,13 +84,15 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
         defaults.set(NSStringFromRect(panel.frame), forKey: Self.frameKey)
     }
     private func update(constrain: Bool = false) {
-        guard !suppressed, expanded || model.islandEnabled, let screen = NSScreen.screens.first else { panel.orderOut(nil); return }
+        guard !suppressed, expanded || model.islandEnabled, let screen = (NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.screens.first) else { panel.orderOut(nil); return }
         changingFrame = true
         defer { changingFrame = false }
         if expanded {
             if !presentingWorkspace {
                 panel.orderOut(nil)
                 panel.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+                panel.isOpaque = true
+                panel.backgroundColor = .windowBackgroundColor
                 panel.title = "轻屿"
                 panel.titleVisibility = .visible
                 panel.isMovable = true
@@ -107,12 +109,14 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
         } else {
             if presentingWorkspace { panel.orderOut(nil) }
             panel.styleMask = [.borderless, .nonactivatingPanel]
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
             panel.minSize = .zero
-            panel.level = .floating; panel.isFloatingPanel = true
+            panel.isFloatingPanel = true; panel.level = .statusBar
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             presentingWorkspace = false
-            let frame = screen.visibleFrame
-            panel.setFrame(NSRect(x: frame.midX - 96, y: frame.maxY - 46, width: 192, height: 38), display: true)
+            panel.setFrame(TaskBadgePlacement.frame(screen: screen.frame, visible: screen.visibleFrame,
+                notchRight: screen.safeAreaInsets.top > 0 ? screen.auxiliaryTopRightArea : nil), display: true)
         }
         if !panel.isVisible && !panel.isMiniaturized { panel.orderFront(nil) }
     }
@@ -120,30 +124,31 @@ enum IslandPage { case launcher, tasks, capture, office, settings }
         let controller = TaskIslandController(model: model, launcher: QuickLauncherController(), defaults: defaults)
         defer { controller.panel.orderOut(nil) }
         controller.expand(.capture)
-        guard controller.panel.styleMask.contains(.resizable), controller.panel.level == .normal else { return false }
+        guard controller.panel.styleMask.contains(.resizable), controller.panel.level == .normal,
+              controller.panel.isOpaque, controller.panel.backgroundColor == .windowBackgroundColor else { print("Workspace lifecycle step 1 failed"); return false }
         let original = controller.panel.frame
         let changed = original.offsetBy(dx: 25, dy: -20)
         controller.panel.setFrame(changed, display: true)
         controller.saveWorkspaceFrame()
         controller.expand(.office)
         let expected = WorkspacePlacement.frame(saved: changed, screens: NSScreen.screens.map(\.visibleFrame))!
-        guard controller.panel.frame == expected else { return false }
+        guard controller.panel.frame == expected else { print("Workspace lifecycle step 2 failed"); return false }
         controller.collapse()
-        guard !controller.panel.isVisible else { return false }
+        guard !controller.panel.isVisible else { print("Workspace lifecycle step 3 failed"); return false }
         controller.expand(.capture)
-        guard controller.panel.frame == expected else { return false }
+        guard controller.panel.frame == expected else { print("Workspace lifecycle step 4 failed"); return false }
         controller.panel.performClose(nil)
-        guard !controller.panel.isVisible, !controller.expanded else { return false }
+        guard !controller.panel.isVisible, !controller.expanded else { print("Workspace lifecycle step 5 failed"); return false }
         model.islandEnabled = true
         controller.update()
-        guard controller.panel.frame.width == 192, controller.panel.level == .floating else { return false }
+        guard controller.panel.frame.width == 64, controller.panel.level == .statusBar else { print("Workspace lifecycle step 6 failed", controller.panel.frame, controller.panel.level.rawValue); return false }
         controller.expand(.office)
-        guard controller.panel.frame == expected else { return false }
+        guard controller.panel.frame == expected else { print("Workspace lifecycle step 7 failed"); return false }
         controller.setCaptureActive(true)
-        guard !controller.panel.isVisible else { return false }
+        guard !controller.panel.isVisible else { print("Workspace lifecycle step 8 failed"); return false }
         controller.setCaptureActive(false)
         controller.expand(.capture)
-        guard controller.panel.frame == expected else { return false }
+        guard controller.panel.frame == expected else { print("Workspace lifecycle step 9 failed"); return false }
         let restored = TaskIslandController(model: model, launcher: QuickLauncherController(), defaults: defaults)
         defer { restored.panel.orderOut(nil) }
         restored.expand(.capture)
@@ -186,31 +191,38 @@ struct UnifiedIslandView: View {
                 }
             } else {
                 Button { controller.expand(.tasks) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checklist").foregroundStyle(accent)
-                        Text(model.connected && model.dataAvailable ? "\(model.unfinishedCount)" : "—").font(.system(size: 12, weight: .semibold))
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(accent)
+                        Text(model.connected && model.dataAvailable ? (model.unfinishedCount > 99 ? "99+" : "\(model.unfinishedCount)") : "—").font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Capsule())
                 }
+                .help(model.connected && model.dataAvailable ? "\(model.unfinishedCount) 项未完成待办 · 点击打开" : "点击连接系统提醒事项")
+                .accessibilityLabel(model.connected && model.dataAvailable ? "\(model.unfinishedCount) 项未完成待办" : "连接系统提醒事项")
             }
         }.buttonStyle(.plain).tint(accent).foregroundStyle(Color.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(WorkspaceTheme.surface(scheme))
-            .clipShape(RoundedRectangle(cornerRadius: controller.expanded ? 18 : 19))
-            .overlay(RoundedRectangle(cornerRadius: controller.expanded ? 18 : 19).stroke(Color.primary.opacity(0.09), lineWidth: 1))
+            // AppKit owns the titled window's corners; only the borderless badge needs a mask.
+            .clipShape(RoundedRectangle(cornerRadius: controller.expanded ? 0 : 19))
+            .overlay {
+                if !controller.expanded {
+                    RoundedRectangle(cornerRadius: 19).stroke(Color.primary.opacity(0.09), lineWidth: 1)
+                }
+            }
     }
     private var navigation: some View {
         HStack(spacing: 8) {
             Button { controller.collapse() } label: {
                 Image(systemName: "leaf.fill").font(.system(size: 19, weight: .medium)).foregroundStyle(accent)
                     .frame(width: 42, height: 36)
-            }.help("轻屿 · 收起")
+            }.help("轻屿 · 收起").accessibilityLabel("收起轻屿窗口")
             tab("截图", page: .capture, icon: "viewfinder")
             tab("启动", page: .launcher, icon: "square.grid.2x2")
             tab("待办", page: .tasks, icon: "checkmark.square")
             tab("办公", page: .office, icon: "briefcase")
             tab("设置", page: .settings, icon: "gearshape")
             Spacer(minLength: 0)
-            Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(12) }.help("收起 · Esc")
+            Button { controller.collapse() } label: { Image(systemName: "chevron.up").padding(12) }.help("收起 · Esc").accessibilityLabel("收起窗口")
         }.padding(14).frame(height: 66)
             .background(dark ? Color.white.opacity(0.025) : Color.white.opacity(0.35))
             .overlay(alignment: .bottom) { Divider().opacity(0.5) }
@@ -232,7 +244,9 @@ struct UnifiedIslandView: View {
             }.frame(width: 88, height: 38)
                 .foregroundStyle(controller.page == page ? (dark ? Color.white : accent) : Color.secondary)
                 .background(controller.page == page ? accent.opacity(dark ? 0.34 : 0.09) : .clear, in: RoundedRectangle(cornerRadius: 11))
-        }
+        }.help("打开\(title)")
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(controller.page == page ? .isSelected : [])
     }
 }
 

@@ -21,6 +21,13 @@ import AppKit
               WorkspacePlacement.frame(saved: NSRect(x: 99999, y: 99999, width: 5000, height: 5000), screens: [a]) == a else {
             print("FAIL workspace placement"); return false
         }
+        let right = NSRect(x: 820, y: 868, width: 620, height: 32)
+        let badge = TaskBadgePlacement.frame(screen: a, visible: NSRect(x: 0, y: 0, width: 1440, height: 868), notchRight: right)
+        let fallback = TaskBadgePlacement.frame(screen: b, visible: NSRect(x: -1920, y: 0, width: 1920, height: 1055), notchRight: nil)
+        guard right.contains(badge), badge.minX == right.minX + 6,
+              badge.width == 64, badge.height == 24,
+              fallback.midX == b.midX, fallback.maxY == 1049,
+              b.contains(fallback) else { print("FAIL task badge placement"); return false }
         let suite = "Qingyu.WindowCheck.\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }

@@ -280,7 +280,9 @@ struct TaskCenterView: View {
                 if model.sources.isEmpty { Text("没有可用账户。请先在系统提醒事项中配置账户，再刷新。") }
             }
             Spacer(minLength: 0)
-            Toggle("常驻顶部显示待办数量", isOn: $model.islandEnabled)
+            Toggle("刘海旁显示待办数量", isOn: $model.islandEnabled)
+            Text("小胶囊显示未完成数量，点击打开待办；无刘海屏幕显示在顶部，捕捉期间自动隐藏。")
+                .font(.caption).foregroundStyle(.secondary)
         }.padding(28).frame(minWidth: 420, minHeight: 400)
             .disabled(model.busy)
 
@@ -369,8 +371,19 @@ private struct TaskDraftView: View {
                 controller.page = page
                 themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: name + (dark ? "-dark" : "-light"), directory: directory, size: NSSize(width: 800, height: 600), appearance: appearance) && themes
             }
+            controller.page = .capture
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "capture-desktop-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 1000, height: 740), appearance: appearance) && themes
+            captureModel.items = []
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "capture-empty-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 800, height: 622), appearance: appearance) && themes
+            captureModel.phase = .paused; captureModel.status = "已暂停 · 可继续或结束保存"
+            captureModel.error = "示例：无法保存，请检查保存文件夹的访问权限。"
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "capture-recovery-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 800, height: 622), appearance: appearance) && themes
+            captureModel.phase = .idle; captureModel.error = nil
+            captureModel.items = ["tasks-list", "tasks-composer", "tasks-onboarding"].enumerated().map { index, name in
+                CaptureItem(id: UUID(), url: URL(fileURLWithPath: directory).appendingPathComponent(name + ".png"), date: Date().addingTimeInterval(Double(-index * 300)), kind: "区域截图")
+            }
             controller.expanded = false
-            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "count-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 192, height: 38), appearance: appearance) && themes
+            themes = renderView(UnifiedIslandView(controller: controller, model: model, launcher: launcher), name: "count-" + (dark ? "dark" : "light"), directory: directory, size: NSSize(width: 64, height: 24), appearance: appearance) && themes
         }
         return onboarding && tasks && composer && island && unifiedTasks && unifiedLauncher && themes
     }

@@ -16,3 +16,15 @@ enum WorkspacePlacement {
     }
     private static func area(_ rect: NSRect) -> CGFloat { rect.isNull ? 0 : max(0, rect.width) * max(0, rect.height) }
 }
+
+/// NSScreen auxiliary areas use global screen coordinates, including secondary displays.
+enum TaskBadgePlacement {
+    static func frame(screen: NSRect, visible: NSRect, notchRight: NSRect?) -> NSRect {
+        let size = NSSize(width: 64, height: 24)
+        if let right = notchRight, right.width >= size.width + 12, right.height >= size.height {
+            return NSRect(x: right.minX + 6, y: right.midY - size.height / 2, width: size.width, height: size.height)
+        }
+        return NSRect(x: visible.midX - size.width / 2, y: visible.maxY - size.height - 6,
+                      width: size.width, height: size.height)
+    }
+}

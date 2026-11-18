@@ -32,3 +32,30 @@ struct Keycap: View {
             .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 6))
     }
 }
+
+/// Shared capture actions retain native Button keyboard activation and expose hover/press states.
+struct WorkspaceCaptureButtonStyle: ButtonStyle {
+    let primary: Bool
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.isFocused) private var focused
+    @State private var hovered = false
+    func makeBody(configuration: Configuration) -> some View {
+        let accent = WorkspaceTheme.accent(scheme)
+        // The dark theme's lighter accent needs dark text for readable contrast.
+        let foreground = primary ? (scheme == .dark ? Color.black : Color.white) : Color.primary
+        configuration.label
+            .foregroundStyle(foreground)
+            .background(primary ? accent : Color.primary.opacity(hovered ? 0.09 : 0.045), in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : (primary && hovered ? 0.06 : 0)))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 15)
+                    .stroke(focused ? accent : .clear, lineWidth: 2).padding(-3)
+            }
+            .opacity(enabled ? 1 : 0.4)
+            .onHover { hovered = $0 }
+    }
+}
